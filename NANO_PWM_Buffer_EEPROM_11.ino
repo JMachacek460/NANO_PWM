@@ -1,8 +1,8 @@
 /*
  * PWM Detector for ARDUINO NANO
- * Description: Reads PWM from pin 2 and controls an LED on pin 12, or pin 10 based on error evaluation.
+ * Description: Reads PWM from pin 2 and controls an LED on pin 12, or pin 6 based on error evaluation.
  * Includes serial communication handling with commands -h -t -i -p -s -e -te -b -l including range validation.
- * Date: 6.12.2025
+ * Date: 10.12.2025
  * Author: Jaroslav Macháček
  *
  * OPTIMALIZACE: Textové konstanty přesunuty do PROGMEM (F() a const char PROGMEM)

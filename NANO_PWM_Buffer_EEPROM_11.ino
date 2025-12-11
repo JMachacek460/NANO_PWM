@@ -40,7 +40,7 @@ const char TEXT_IDN[] PROGMEM = "Arduino NANO for measuring PWM signal duty cycl
 const char TEXT_HIDN[] PROGMEM = "*IDN?";
 const char TEXT_FETC[] PROGMEM = ":FETCh? returns the duty cycle values ​​of the PWM signal in per mille";
 const char TEXT_PWID[] PROGMEM = ":MEASure:PWIDth? returns the length value of the HIGH signal";
-
+const char TEXT_PER[] PROGMEM = ":MEASure:PERiod? returns the signal period value";
 
 #define ERROR_OFF 255
 #define MAX_COMMAND_LENGTH 60 // Max. délka příkazu pro char buffer
@@ -379,6 +379,7 @@ void loop() {
       tiskniProgmem(TEXT_HIDN);
       tiskniProgmem(TEXT_FETC);
       tiskniProgmem(TEXT_PWID);
+      tiskniProgmem(TEXT_PER);
 
     } 
     else if (strcmp(cmd, "*IDN?") == 0){
@@ -394,7 +395,10 @@ void loop() {
       pwid = (float)impuls / 1000000.0;
       Serial.println(pwid,6);
     }
-
+    else if (strcmp(cmd, ":MEASure:PERiod?") == 0 || strcmp(cmd, ":MEAS:PER?") == 0 || strcmp(cmd, ":MEASURE:PERIOD?") == 0 ){
+      //MEASure:PERiod?
+      Serial.println(stablePeriod / 1000000.0,6);
+    }
     else if (strncmp(cmd, "-te", 3) == 0) {
       if (! zpracujUniverzalniPrikaz(cmd, 100, 65000, nullptr, nullptr, &aktualniNastaveni.t_error,  nullptr)){
         tiskniProgmem(TEXT_TE);

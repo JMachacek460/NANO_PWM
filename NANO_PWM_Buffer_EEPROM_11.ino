@@ -7,6 +7,7 @@
  *
  * OPTIMALIZACE: Textové konstanty přesunuty do PROGMEM (F() a const char PROGMEM)
  * Nahrazena třída String za char[] pro sériový vstup.
+ * přidány příkazy pro měření *IDN?  :MEASure:PWIDth?  :FETCh?
  */
 #include <Arduino.h>
 #include <EEPROM.h>

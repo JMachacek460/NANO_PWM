@@ -15,7 +15,7 @@
 #include <avr/pgmspace.h> 
 
 #define VERSION_SIZE 5
-#define VERSION "V1.1"
+#define VERSION "V1.2"
 
 // If you uncomment the following line, you will activate debug mode
 //#define DEBUG_MODE 
@@ -35,7 +35,9 @@ const char TEXT_TE[] PROGMEM = "Command: -te [number] minimum error signaling du
 const char TEXT_BPS[] PROGMEM = "Command: -b [number] Serial buat rate 96 -> 9600, 144 -> 14400, 192 -> 19200, 288 -> 28800, 384 -> 38400, 576 -> 57600, 1152 -> 115200";
 const char TEXT_L[] PROGMEM = "Command: -l [number] 0/1 - no/yes lists current values of frequency and duty cycle";
 const char TEXT_H[] PROGMEM = "\nCommands: -h for help\n";
-const char TEXT_IDN[] PROGMEM = "Arduino NANO for measuring PWM signal duty cycle";
+const char TEXT_IDN[] PROGMEM = "Arduino NANO for measuring PWM signal duty cycle.";
+const char TEXT_HIDN[] PROGMEM = "Command: *IDN? ";
+const char TEXT_FETC[] PROGMEM = "Command: :FETCh? ";
 
 
 #define ERROR_OFF 255
@@ -138,7 +140,7 @@ void tiskniProgmem(const char *str) {
 }
 
 void zobrazNastaveni() {
-  Serial.print(F("Verion: ")); Serial.println(aktualniNastaveni.verze); 
+  Serial.print(F("Version: ")); Serial.println(aktualniNastaveni.verze); 
   Serial.print(F("Threshold LOW: ")); Serial.print(aktualniNastaveni.spodni_hranice); Serial.println(F("%"));
   Serial.print(F("Threshold HIGH: ")); Serial.print(aktualniNastaveni.horni_hranice); Serial.println(F("%"));
   Serial.print(F("Invert output: ")); Serial.println(aktualniNastaveni.input); 
@@ -351,12 +353,14 @@ void loop() {
       tiskniProgmem(TEXT_TE);
       tiskniProgmem(TEXT_BPS);
       tiskniProgmem(TEXT_L);
+      tiskniProgmem(TEXT_HIDN);
+      tiskniProgmem(TEXT_FETC);
     } 
     else if (strcmp(cmd, "*IDN?") == 0){
       //*IDN?
-      tiskniProgmem(TEXT_IDN);
+      Serial.print(reinterpret_cast<const __FlashStringHelper *>(TEXT_IDN)); Serial.print(F(" Version: ")); Serial.println(aktualniNastaveni.verze);
     }
-    else if (strcmp(cmd, ":FETCh?") == 0 || strcmp(cmd, ":FETC?") == 0  ){
+    else if (strcmp(cmd, ":FETCh?") == 0 || strcmp(cmd, ":FETC?") == 0 || strcmp(cmd, ":FETCH?") == 0 ){
       //:FETCh?
       Serial.print(stableDutyCyclePromile);
     }

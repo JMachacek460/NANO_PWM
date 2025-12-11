@@ -7,13 +7,13 @@
  *
  * OPTIMALIZACE: Textové konstanty přesunuty do PROGMEM (F() a const char PROGMEM)
  * Nahrazena třída String za char[] pro sériový vstup.
- * přidány příkazy pro měření *IDN?  :MEASure:PWIDth?  :FETCh?
+ * přidány příkazy pro měření *IDN?  :MEASure:PWIDth?  :FETCh? :MEASure:PERiod?
  */
 #include <Arduino.h>
 #include <EEPROM.h>
+#include <avr/pgmspace.h> // Pro PROGMEM
+#include <ctype.h> // Potreba pro funkci tolower()
 
-// Pro PROGMEM
-#include <avr/pgmspace.h> 
 
 #define VERSION_SIZE 5
 #define VERSION "V1.2"
@@ -23,7 +23,7 @@
 
 #define INPUT_PIN 2
 #define OUTPUT_PIN 12
-#define CHYBA_PIN 6
+#define ERROR_PIN 6
 #define BUFFER_SIZE 10
 
 // --- TEXTY PŘESUNUTY DO PROGMEM (ÚSPORA SRAM) ---
@@ -51,7 +51,7 @@ struct PwmMeasurement {
   unsigned long impuls;
 };
 
-volatile unsigned long zacatekChyby=0;
+volatile unsigned long zacatekChyby=0;  // cas kdy začla chyba
 
 volatile PwmMeasurement buffer[BUFFER_SIZE];
 volatile byte head = 0;
@@ -70,7 +70,6 @@ int stridaPromile;           // střida v promile překlopena tak, aby byla od 0
 unsigned long impuls;        // delka impulsu v us
 float pwid = 0.0;            // delka impulsu v sekundách
 char inChar;                 // po čtení seriové linky
-
 
 
 void pushMeasurement(unsigned long period, int dutyCycle, unsigned long impuls) {
@@ -147,8 +146,8 @@ const int EEPROM_ADRESA = 0;
 char incomingBuffer[MAX_COMMAND_LENGTH];
 byte bufferIndex = 0; 
 bool newData = false;
-int pocetChyb=0;
-int pocetChybPer=0;
+int pocetChybStridy=0;
+int pocetChybPeriody=0;
 
 // Pomocná funkce pro tisk řetězců z PROGMEM
 void tiskniProgmem(const char *str) {
@@ -174,7 +173,7 @@ void zobrazNastaveni() {
 void setup() {
   pinMode(INPUT_PIN, INPUT);
   pinMode(OUTPUT_PIN, OUTPUT);
-  pinMode(CHYBA_PIN, OUTPUT);
+  pinMode(ERROR_PIN, OUTPUT);
   // We use CHANGE, so we react to both edges
   attachInterrupt(digitalPinToInterrupt(INPUT_PIN), handlePinChange, CHANGE);
 
@@ -200,18 +199,16 @@ void setup() {
   
     EEPROM.put(EEPROM_ADRESA, aktualniNastaveni);
   }
-  // Použití nového a elegantního zápisu Serial.begin(aktualniNastaveni.bps * 100UL);
   Serial.begin(aktualniNastaveni.bps * 100UL);
   Serial.println(F("\n\nThe Arduino is ready to evaluate the rectangular signal on PIN 2. It will evaluate its period and duty cycle."));
   Serial.println(F("Flipping PIN12 based on duty cycle and PIN6 based on error."));
   zobrazNastaveni();
   Serial.print("\n");
-  tiskniProgmem(TEXT_H); // TEXT_H je definován výše v PROGMEM
+  tiskniProgmem(TEXT_H); 
 
 }
 
 // Funkce pro parsování, validaci a ukládání (až) dvou hodnot nastavení
-// Přepracováno pro použití const char* (C-řetězce)
 bool zpracujUniverzalniPrikaz(const char* command, unsigned int minValue, unsigned int maxValue, byte* lowPtr, byte* highPtr, unsigned int* uLowPtr = nullptr, unsigned int* uHighPtr = nullptr) {
     long nove_spodni = -1;
     long nove_horni = -1;
@@ -306,36 +303,36 @@ void loop() {
     
     // Test duty cycle tolerance
     if (stridaPromile < aktualniNastaveni.min_strida || stridaPromile > aktualniNastaveni.max_strida ){
-      if (pocetChyb==0){
+      if (pocetChybStridy==0){
         zacatekChyby=millis();
       }
-      pocetChyb+=1;
-      if (pocetChyb > aktualniNastaveni.max_error && aktualniNastaveni.max_error != ERROR_OFF){
+      pocetChybStridy+=1;
+      if (pocetChybStridy > aktualniNastaveni.max_error && aktualniNastaveni.max_error != ERROR_OFF){
         Serial.print(F("Signal duty cycle is outside tolerance.  ")); Serial.print(stableDutyCyclePromile/10.0); Serial.println(F(" %"));
-        digitalWrite(CHYBA_PIN, HIGH);
+        digitalWrite(ERROR_PIN, HIGH);
       }
     } else{
-      pocetChyb=0;
+      pocetChybStridy=0;
     }
 
     // Test period tolerance
     if (stablePeriod < aktualniNastaveni.min_perioda || stablePeriod > aktualniNastaveni.max_perioda ){
-      if (pocetChybPer == 0){
+      if (pocetChybPeriody == 0){
         zacatekChyby=millis();
       }
-      pocetChybPer+=1;
-      if (pocetChybPer > aktualniNastaveni.max_error && aktualniNastaveni.max_error != ERROR_OFF){
+      pocetChybPeriody+=1;
+      if (pocetChybPeriody > aktualniNastaveni.max_error && aktualniNastaveni.max_error != ERROR_OFF){
         Serial.print(F("Signal period is outside tolerance.  ")); Serial.print(stablePeriod); Serial.println(F(" us"));
-        digitalWrite(CHYBA_PIN, HIGH);
+        digitalWrite(ERROR_PIN, HIGH);
       }
     } else{
-      pocetChybPer=0;
+      pocetChybPeriody=0;
     }
 
     // Test whether an error occurred
-    if (pocetChyb == 0 && pocetChybPer == 0 && digitalRead(CHYBA_PIN)==HIGH){
+    if (pocetChybStridy == 0 && pocetChybPeriody == 0 && digitalRead(ERROR_PIN)==HIGH){
       if (millis()-zacatekChyby > aktualniNastaveni.t_error){
-        digitalWrite(CHYBA_PIN, LOW);
+        digitalWrite(ERROR_PIN, LOW);
       }
     }
 
@@ -359,6 +356,7 @@ void loop() {
     } else if (bufferIndex < MAX_COMMAND_LENGTH - 1) {
       // Přidáme jen znaky a ignorujeme whitespace na začátku
       if (bufferIndex > 0 || inChar != ' ') {
+        inChar = tolower(inChar);
         incomingBuffer[bufferIndex++] = inChar;
       }
     }
@@ -382,20 +380,20 @@ void loop() {
       tiskniProgmem(TEXT_PER);
 
     } 
-    else if (strcmp(cmd, "*IDN?") == 0){
+    else if (strcmp(cmd, "*idn?") == 0){
       //*IDN?
       Serial.print(reinterpret_cast<const __FlashStringHelper *>(TEXT_IDN)); Serial.print(F(" Version: ")); Serial.println(aktualniNastaveni.verze);
     }
-    else if (strcmp(cmd, ":FETCh?") == 0 || strcmp(cmd, ":FETC?") == 0 || strcmp(cmd, ":FETCH?") == 0 ){
+    else if (strcmp(cmd, ":fetch?") == 0 || strcmp(cmd, ":fetc?") == 0 ){
       //:FETCh?
       Serial.println(stableDutyCyclePromile);
     }
-    else if (strcmp(cmd, ":MEASure:PWIDth?") == 0 || strcmp(cmd, ":MEAS:PWID?") == 0 || strcmp(cmd, ":MEASURE:PWIDTH?") == 0 ){
+    else if (strcmp(cmd, ":measure:pwidth?") == 0 || strcmp(cmd, ":meas:pwid?") == 0 ){
       //:MEASure:PWIDth?
       pwid = (float)impuls / 1000000.0;
       Serial.println(pwid,6);
     }
-    else if (strcmp(cmd, ":MEASure:PERiod?") == 0 || strcmp(cmd, ":MEAS:PER?") == 0 || strcmp(cmd, ":MEASURE:PERIOD?") == 0 ){
+    else if (strcmp(cmd, ":measure:period?") == 0 || strcmp(cmd, ":meas:per?") == 0 ){
       //MEASure:PERiod?
       Serial.println(stablePeriod / 1000000.0,6);
     }

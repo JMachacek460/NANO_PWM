@@ -98,8 +98,9 @@ void handlePinChange() {
   unsigned long currentTime = micros();
   unsigned long duration = currentTime - lastEdgeTime;
   lastEdgeTime = currentTime; // Update the edge time immediately
+  bool log1=0;                // definice jaká je hodnota na stupu když optočlenem protéká proud
 
-  if (digitalRead(INPUT_PIN) == HIGH) {
+  if (digitalRead(INPUT_PIN) == log1) {
     // Transition from LOW to HIGH arrived. The previous segment was LOW.
     lowDuration = duration;
     pinState = true;
@@ -185,7 +186,7 @@ void setup() {
     strncpy(aktualniNastaveni.verze, VERSION, VERSION_SIZE);
     aktualniNastaveni.spodni_hranice=40;
     aktualniNastaveni.horni_hranice=60;
-    aktualniNastaveni.input=1;
+    aktualniNastaveni.input=0;
     aktualniNastaveni.min_perioda=18000;
     aktualniNastaveni.max_perioda=22000;
     aktualniNastaveni.min_strida=280;

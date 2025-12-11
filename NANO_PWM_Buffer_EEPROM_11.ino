@@ -70,7 +70,13 @@ int stridaPromile;           // střida v promile překlopena tak, aby byla od 0
 unsigned long impuls;        // delka impulsu v us
 float pwid = 0.0;            // delka impulsu v sekundách
 char inChar;                 // po čtení seriové linky
-
+const char *cmd;             // ukazatel na incomingBuffer
+bool precteno;               // zda byl dekodován nějaký příkaz
+char incomingBuffer[MAX_COMMAND_LENGTH];
+byte bufferIndex = 0; 
+bool newData = false;
+int pocetChybStridy=0;
+int pocetChybPeriody=0;
 
 void pushMeasurement(unsigned long period, int dutyCycle, unsigned long impuls) {
   byte nextHead = (head + 1) % BUFFER_SIZE;
@@ -142,12 +148,7 @@ struct MojeNastaveni {
 MojeNastaveni aktualniNastaveni;
 
 const int EEPROM_ADRESA = 0;
-// --- NAHRAZENO MÍSTO String incomingString ---
-char incomingBuffer[MAX_COMMAND_LENGTH];
-byte bufferIndex = 0; 
-bool newData = false;
-int pocetChybStridy=0;
-int pocetChybPeriody=0;
+
 
 // Pomocná funkce pro tisk řetězců z PROGMEM
 void tiskniProgmem(const char *str) {
@@ -364,7 +365,8 @@ void loop() {
 
   if (newData) {
     // --- Používáme C-řetězce a strcmp/strncmp místo String.equals/startsWith ---
-    const char *cmd = incomingBuffer;
+    cmd = incomingBuffer;
+    precteno = false;
     if (strcmp(cmd, "-h") == 0) {
       tiskniProgmem(TEXT_T);
       tiskniProgmem(TEXT_I);
@@ -378,66 +380,92 @@ void loop() {
       tiskniProgmem(TEXT_FETC);
       tiskniProgmem(TEXT_PWID);
       tiskniProgmem(TEXT_PER);
-
+      precteno = true;
     } 
-    else if (strcmp(cmd, "*idn?") == 0){
+    if (strncmp(cmd, "*idn?", 5) == 0){
       //*IDN?
       Serial.print(reinterpret_cast<const __FlashStringHelper *>(TEXT_IDN)); Serial.print(F(" Version: ")); Serial.println(aktualniNastaveni.verze);
+      precteno = true;
     }
-    else if (strcmp(cmd, ":fetch?") == 0 || strcmp(cmd, ":fetc?") == 0 ){
+    if (strncmp(cmd, ":fetch?", 7) == 0 ){
       //:FETCh?
       Serial.println(stableDutyCyclePromile);
+      if (strlen(cmd) > 8) cmd = cmd + 8;
+      else precteno = true;
     }
-    else if (strcmp(cmd, ":measure:pwidth?") == 0 || strcmp(cmd, ":meas:pwid?") == 0 ){
+    if (strncmp(cmd, ":fetc?", 6) == 0 ){
+      //:FETCh?
+      Serial.println(stableDutyCyclePromile);
+      if (strlen(cmd) > 7) cmd = cmd + 7;
+      else precteno = true;
+    }
+    if (strncmp(cmd, ":measure:pwidth?",16) == 0 ){
       //:MEASure:PWIDth?
       pwid = (float)impuls / 1000000.0;
       Serial.println(pwid,6);
+      if (strlen(cmd) > 17) cmd = cmd + 17;
+      else precteno = true;
     }
-    else if (strcmp(cmd, ":measure:period?") == 0 || strcmp(cmd, ":meas:per?") == 0 ){
+    if (strncmp(cmd, ":meas:pwid?", 11) == 0 ){
+      //:MEASure:PWIDth?
+      pwid = (float)impuls / 1000000.0;
+      Serial.println(pwid,6);
+      if (strlen(cmd) > 12) cmd = cmd + 12;
+      else precteno = true;
+    }
+    if (strncmp(cmd, ":measure:period?", 16) == 0 ){
       //MEASure:PERiod?
       Serial.println(stablePeriod / 1000000.0,6);
+      //if (strlen(cmd) > 17) cmd = cmd + 17;
+      precteno = true;
     }
-    else if (strncmp(cmd, "-te", 3) == 0) {
+    if (strncmp(cmd, ":meas:per?", 10) == 0 ){
+      //MEASure:PERiod?
+      Serial.println(stablePeriod / 1000000.0,6);
+      //if (strlen(cmd) > 11) cmd = cmd + 11;
+      precteno = true;
+    }
+    if (strncmp(cmd, "-te", 3) == 0) {
       if (! zpracujUniverzalniPrikaz(cmd, 100, 65000, nullptr, nullptr, &aktualniNastaveni.t_error,  nullptr)){
         tiskniProgmem(TEXT_TE);
-      };
+      }; precteno = true;
     } 
-    else if (strncmp(cmd, "-t", 2) == 0) {
+    if (strncmp(cmd, "-t ", 3) == 0) {
       if (! zpracujUniverzalniPrikaz(cmd, 1, 99, &aktualniNastaveni.spodni_hranice, &aktualniNastaveni.horni_hranice)){
         tiskniProgmem(TEXT_T);
-      };
+      }; precteno = true;
     } 
-    else if (strncmp(cmd, "-i", 2) == 0) {
+    if (strncmp(cmd, "-i", 2) == 0) {
       if (! zpracujUniverzalniPrikaz(cmd, 0, 1, &aktualniNastaveni.input, nullptr, nullptr, nullptr)){
         tiskniProgmem(TEXT_I);
-      };
+      }; precteno = true;
     } 
-    else if (strncmp(cmd, "-l", 2) == 0) {
+    if (strncmp(cmd, "-l", 2) == 0) {
       if (! zpracujUniverzalniPrikaz(cmd, 0, 1, &aktualniNastaveni.listing, nullptr, nullptr, nullptr)){
         tiskniProgmem(TEXT_L);
-      };
+      }; precteno = true;
     }
-    else if (strncmp(cmd, "-p", 2) == 0) {
+    if (strncmp(cmd, "-p", 2) == 0) {
       if (! zpracujUniverzalniPrikaz(cmd, 100, 65000, nullptr, nullptr, &aktualniNastaveni.min_perioda, &aktualniNastaveni.max_perioda)){
         tiskniProgmem(TEXT_P);
-      };
+      }; precteno = true;
     } 
-    else if (strncmp(cmd, "-s", 2) == 0) {
+    if (strncmp(cmd, "-s", 2) == 0) {
       if (! zpracujUniverzalniPrikaz(cmd, 1, 499, nullptr, nullptr, &aktualniNastaveni.min_strida, &aktualniNastaveni.max_strida)){
         tiskniProgmem(TEXT_S);
-      };
+      }; precteno = true;
     } 
-    else if (strncmp(cmd, "-e", 2) == 0) {
+    if (strncmp(cmd, "-e", 2) == 0) {
       if (! zpracujUniverzalniPrikaz(cmd, 0, 255, &aktualniNastaveni.max_error, nullptr, nullptr, nullptr)){
         tiskniProgmem(TEXT_E);
-      };
+      }; precteno = true;
     } 
-    else if (strncmp(cmd, "-b", 2) == 0) {
+    if (strncmp(cmd, "-b", 2) == 0) {
       if (! zpracujUniverzalniPrikaz(cmd, 96, 1152, nullptr, nullptr, &aktualniNastaveni.bps,  nullptr)){
         tiskniProgmem(TEXT_BPS);
-      };
+      }; precteno = true;
     } 
-    else {
+    if (!precteno){
       Serial.print(F("Unknown command or wrong format: "));
       Serial.println(cmd);
       tiskniProgmem(TEXT_H);

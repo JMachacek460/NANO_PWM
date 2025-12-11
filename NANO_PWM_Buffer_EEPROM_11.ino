@@ -27,19 +27,19 @@
 #define BUFFER_SIZE 10
 
 // --- TEXTY PŘESUNUTY DO PROGMEM (ÚSPORA SRAM) ---
-const char TEXT_T[] PROGMEM = "Command: -t [number1] [number2] to set duty cycle limits in % for flipping (1-99) pin6.";
-const char TEXT_I[] PROGMEM = "Command: -i [number] 0/1 - no/yes invert output.";
-const char TEXT_P[] PROGMEM = "Command: -p [number1] [number2] to set limits for correct period in us (100-65000).";
-const char TEXT_S[] PROGMEM = "Command: -s [number1] [number2] to set limits for correct duty cycle in permille (1-499).";
-const char TEXT_E[] PROGMEM = "Command: -e [number1] to set the number of consecutive errors before the error pin (0-255) pin12 flips.";
-const char TEXT_TE[] PROGMEM = "Command: -te [number] minimum error signaling duration (10-65000) ms.";
-const char TEXT_BPS[] PROGMEM = "Command: -b [number] Serial buat rate 96 -> 9600, 144 -> 14400, 192 -> 19200, 288 -> 28800, 384 -> 38400, 576 -> 57600, 1152 -> 115200";
-const char TEXT_L[] PROGMEM = "Command: -l [number] 0/1 - no/yes lists current values of frequency and duty cycle";
-const char TEXT_H[] PROGMEM = "\nCommands: -h for help\n";
+const char TEXT_T[] PROGMEM = "-t [number1] [number2] to set duty cycle limits in % for flipping (1-99) pin6.";
+const char TEXT_I[] PROGMEM = "-i [number] 0/1 - no/yes invert output.";
+const char TEXT_P[] PROGMEM = "-p [number1] [number2] to set limits for correct period in us (100-65000).";
+const char TEXT_S[] PROGMEM = "-s [number1] [number2] to set limits for correct duty cycle in permille (1-499).";
+const char TEXT_E[] PROGMEM = "-e [number1] to set the number of consecutive errors before the error pin (0-255) pin12 flips.";
+const char TEXT_TE[] PROGMEM = "-te [number] minimum error signaling duration (10-65000) ms.";
+const char TEXT_BPS[] PROGMEM = "-b [number] Serial buat rate 96 -> 9600, 144 -> 14400, 192 -> 19200, 288 -> 28800, 384 -> 38400, 576 -> 57600, 1152 -> 115200";
+const char TEXT_L[] PROGMEM = "-l [number] 0/1 - no/yes lists current values of frequency and duty cycle";
+const char TEXT_H[] PROGMEM = "-h for help\n";
 const char TEXT_IDN[] PROGMEM = "Arduino NANO for measuring PWM signal duty cycle.";
-const char TEXT_HIDN[] PROGMEM = "Command: *IDN?";
-const char TEXT_FETC[] PROGMEM = "Command: :FETCh? returns the duty cycle values ​​of the PWM signal in per mille";
-const char TEXT_PWID[] PROGMEM = "Command: :MEASure:PWIDth? returns the length value of the HIGH signal";
+const char TEXT_HIDN[] PROGMEM = "*IDN?";
+const char TEXT_FETC[] PROGMEM = ":FETCh? returns the duty cycle values ​​of the PWM signal in per mille";
+const char TEXT_PWID[] PROGMEM = ":MEASure:PWIDth? returns the length value of the HIGH signal";
 
 
 #define ERROR_OFF 255
@@ -152,6 +152,7 @@ int pocetChybPer=0;
 
 // Pomocná funkce pro tisk řetězců z PROGMEM
 void tiskniProgmem(const char *str) {
+  Serial.print(F("Command: "));
   Serial.println(reinterpret_cast<const __FlashStringHelper *>(str));
 }
 
@@ -204,6 +205,7 @@ void setup() {
   Serial.println(F("\n\nThe Arduino is ready to evaluate the rectangular signal on PIN 2. It will evaluate its period and duty cycle."));
   Serial.println(F("Flipping PIN12 based on duty cycle and PIN6 based on error."));
   zobrazNastaveni();
+  Serial.print("\n");
   tiskniProgmem(TEXT_H); // TEXT_H je definován výše v PROGMEM
 
 }
@@ -269,9 +271,15 @@ bool zpracujUniverzalniPrikaz(const char* command, unsigned int minValue, unsign
       Serial.print(minValue);
       Serial.print(F("-"));
       Serial.print(maxValue);
-      Serial.println(F(") and the first value must be less than or equal to the second."));
+      if (uHighPtr == nullptr && highPtr == nullptr){
+        Serial.println(F(")."));
+      }
+      else {
+        Serial.println(F(") and the first value must be less than or equal to the second."));
+        
+      }
       Serial.println(F("State was not changed."));
-      zobrazNastaveni();
+      //zobrazNastaveni();
       return false;
     }
 }
@@ -389,42 +397,42 @@ void loop() {
 
     else if (strncmp(cmd, "-te", 3) == 0) {
       if (! zpracujUniverzalniPrikaz(cmd, 100, 65000, nullptr, nullptr, &aktualniNastaveni.t_error,  nullptr)){
-        VypisChybu(TEXT_TE);
+        tiskniProgmem(TEXT_TE);
       };
     } 
     else if (strncmp(cmd, "-t", 2) == 0) {
       if (! zpracujUniverzalniPrikaz(cmd, 1, 99, &aktualniNastaveni.spodni_hranice, &aktualniNastaveni.horni_hranice)){
-        VypisChybu(TEXT_T);
+        tiskniProgmem(TEXT_T);
       };
     } 
     else if (strncmp(cmd, "-i", 2) == 0) {
       if (! zpracujUniverzalniPrikaz(cmd, 0, 1, &aktualniNastaveni.input, nullptr, nullptr, nullptr)){
-        VypisChybu(TEXT_I);
+        tiskniProgmem(TEXT_I);
       };
     } 
     else if (strncmp(cmd, "-l", 2) == 0) {
       if (! zpracujUniverzalniPrikaz(cmd, 0, 1, &aktualniNastaveni.listing, nullptr, nullptr, nullptr)){
-        VypisChybu(TEXT_L);
+        tiskniProgmem(TEXT_L);
       };
     }
     else if (strncmp(cmd, "-p", 2) == 0) {
       if (! zpracujUniverzalniPrikaz(cmd, 100, 65000, nullptr, nullptr, &aktualniNastaveni.min_perioda, &aktualniNastaveni.max_perioda)){
-        VypisChybu(TEXT_P);
+        tiskniProgmem(TEXT_P);
       };
     } 
     else if (strncmp(cmd, "-s", 2) == 0) {
       if (! zpracujUniverzalniPrikaz(cmd, 1, 499, nullptr, nullptr, &aktualniNastaveni.min_strida, &aktualniNastaveni.max_strida)){
-        VypisChybu(TEXT_S);
+        tiskniProgmem(TEXT_S);
       };
     } 
     else if (strncmp(cmd, "-e", 2) == 0) {
       if (! zpracujUniverzalniPrikaz(cmd, 0, 255, &aktualniNastaveni.max_error, nullptr, nullptr, nullptr)){
-        VypisChybu(TEXT_E);
+        tiskniProgmem(TEXT_E);
       };
     } 
     else if (strncmp(cmd, "-b", 2) == 0) {
       if (! zpracujUniverzalniPrikaz(cmd, 96, 1152, nullptr, nullptr, &aktualniNastaveni.bps,  nullptr)){
-        VypisChybu(TEXT_BPS);
+        tiskniProgmem(TEXT_BPS);
       };
     } 
     else {
@@ -440,10 +448,4 @@ void loop() {
   #ifdef DEBUG_MODE
     delay(100);
   #endif
-}
-
-// Změna volání z VypisChybu(String Text) na VypisChybu(const char* Text)
-void VypisChybu(const char* Text){
-  Serial.println(F("Invalid command"));
-  tiskniProgmem(Text);
 }

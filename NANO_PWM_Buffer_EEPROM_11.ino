@@ -35,6 +35,8 @@ const char TEXT_TE[] PROGMEM = "Command: -te [number] minimum error signaling du
 const char TEXT_BPS[] PROGMEM = "Command: -b [number] Serial buat rate 96 -> 9600, 144 -> 14400, 192 -> 19200, 288 -> 28800, 384 -> 38400, 576 -> 57600, 1152 -> 115200";
 const char TEXT_L[] PROGMEM = "Command: -l [number] 0/1 - no/yes lists current values of frequency and duty cycle";
 const char TEXT_H[] PROGMEM = "\nCommands: -h for help\n";
+const char TEXT_IDN[] PROGMEM = "Arduino NANO for measuring PWM signal duty cycle";
+
 
 #define ERROR_OFF 255
 #define MAX_COMMAND_LENGTH 60 // Max. délka příkazu pro char buffer
@@ -340,7 +342,6 @@ void loop() {
   if (newData) {
     // --- Používáme C-řetězce a strcmp/strncmp místo String.equals/startsWith ---
     const char *cmd = incomingBuffer;
-
     if (strcmp(cmd, "-h") == 0) {
       tiskniProgmem(TEXT_T);
       tiskniProgmem(TEXT_I);
@@ -351,6 +352,14 @@ void loop() {
       tiskniProgmem(TEXT_BPS);
       tiskniProgmem(TEXT_L);
     } 
+    else if (strcmp(cmd, "*IDN?") == 0){
+      //*IDN?
+      tiskniProgmem(TEXT_IDN);
+    }
+    else if (strcmp(cmd, ":FETCh?") == 0 || strcmp(cmd, ":FETC?") == 0  ){
+      //:FETCh?
+      Serial.print(stableDutyCyclePromile);
+    }
     else if (strncmp(cmd, "-te", 3) == 0) {
       if (! zpracujUniverzalniPrikaz(cmd, 100, 65000, nullptr, nullptr, &aktualniNastaveni.t_error,  nullptr)){
         VypisChybu(TEXT_TE);

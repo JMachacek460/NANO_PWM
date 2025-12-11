@@ -26,18 +26,19 @@
 #define BUFFER_SIZE 10
 
 // --- TEXTY PŘESUNUTY DO PROGMEM (ÚSPORA SRAM) ---
-const char TEXT_T[] PROGMEM = "Command: -t [number1] [number2] to set duty cycle limits in % for flipping (1-99) pin10.";
+const char TEXT_T[] PROGMEM = "Command: -t [number1] [number2] to set duty cycle limits in % for flipping (1-99) pin6.";
 const char TEXT_I[] PROGMEM = "Command: -i [number] 0/1 - no/yes invert output.";
 const char TEXT_P[] PROGMEM = "Command: -p [number1] [number2] to set limits for correct period in us (100-65000).";
-const char TEXT_S[] PROGMEM = "Command: -s [number1] [number2] to set limits for correct duty cycle in permille (1-999).";
+const char TEXT_S[] PROGMEM = "Command: -s [number1] [number2] to set limits for correct duty cycle in permille (1-499).";
 const char TEXT_E[] PROGMEM = "Command: -e [number1] to set the number of consecutive errors before the error pin (0-255) pin12 flips.";
 const char TEXT_TE[] PROGMEM = "Command: -te [number] minimum error signaling duration (10-65000) ms.";
 const char TEXT_BPS[] PROGMEM = "Command: -b [number] Serial buat rate 96 -> 9600, 144 -> 14400, 192 -> 19200, 288 -> 28800, 384 -> 38400, 576 -> 57600, 1152 -> 115200";
 const char TEXT_L[] PROGMEM = "Command: -l [number] 0/1 - no/yes lists current values of frequency and duty cycle";
 const char TEXT_H[] PROGMEM = "\nCommands: -h for help\n";
 const char TEXT_IDN[] PROGMEM = "Arduino NANO for measuring PWM signal duty cycle.";
-const char TEXT_HIDN[] PROGMEM = "Command: *IDN? ";
-const char TEXT_FETC[] PROGMEM = "Command: :FETCh? ";
+const char TEXT_HIDN[] PROGMEM = "Command: *IDN?";
+const char TEXT_FETC[] PROGMEM = "Command: :FETCh? returns the duty cycle values ​​of the PWM signal in per mille";
+const char TEXT_PWID[] PROGMEM = "Command: :MEASure:PWIDth? returns the length value of the HIGH signal";
 
 
 #define ERROR_OFF 255
@@ -46,6 +47,7 @@ const char TEXT_FETC[] PROGMEM = "Command: :FETCh? ";
 struct PwmMeasurement {
   unsigned long period;
   int dutyCyclePromile;
+  unsigned long impuls;
 };
 
 volatile unsigned long zacatekChyby=0;
@@ -60,19 +62,31 @@ volatile unsigned long highDuration = 0;
 volatile unsigned long lowDuration = 0;
 volatile bool pinState = false; // Current state of the pin
 
-void pushMeasurement(unsigned long period, int dutyCycle) {
+// --- GLOBALNI DEKLARACE PROMENNYCH používaných ve smičce loop
+unsigned long stablePeriod;  // perioda v us
+int stableDutyCyclePromile;  // střída v promile skutečná od 0 do 1000
+int stridaPromile;           // střida v promile překlopena tak, aby byla od 0 do 500
+unsigned long impuls;        // delka impulsu v us
+float pwid = 0.0;            // delka impulsu v sekundách
+char inChar;                 // po čtení seriové linky
+
+
+
+void pushMeasurement(unsigned long period, int dutyCycle, unsigned long impuls) {
   byte nextHead = (head + 1) % BUFFER_SIZE;
   if (nextHead != tail) {
     buffer[head].period = period;
     buffer[head].dutyCyclePromile = dutyCycle;
+    buffer[head].impuls = impuls;
     head = nextHead;
   }
 }
 
-bool popMeasurement(unsigned long &period, int &dutyCycle) {
+bool popMeasurement(unsigned long &period, int &dutyCycle, unsigned long &impuls) {
   if (head == tail) return false;
   period = buffer[tail].period;
   dutyCycle = buffer[tail].dutyCyclePromile;
+  impuls = buffer[tail].impuls;
   tail = (tail + 1) % BUFFER_SIZE;
   return true;
 }
@@ -96,7 +110,7 @@ void handlePinChange() {
         if (currentPeriod > 0) {
              // Calculate duty cycle: highDuration / period * 1000
              int dutyCycle = (highDuration * 1000UL) / currentPeriod;
-             pushMeasurement(currentPeriod, dutyCycle);
+             pushMeasurement(currentPeriod, dutyCycle, highDuration);
         }
     }
 
@@ -186,10 +200,10 @@ void setup() {
   // Použití nového a elegantního zápisu Serial.begin(aktualniNastaveni.bps * 100UL);
   Serial.begin(aktualniNastaveni.bps * 100UL);
   Serial.println(F("\n\nThe Arduino is ready to evaluate the rectangular signal on PIN 2. It will evaluate its period and duty cycle."));
-  Serial.println(F("Flipping PIN12 based on duty cycle and PIN10 based on error."));
+  Serial.println(F("Flipping PIN12 based on duty cycle and PIN6 based on error."));
+  zobrazNastaveni();
   tiskniProgmem(TEXT_H); // TEXT_H je definován výše v PROGMEM
 
-  zobrazNastaveni();
 }
 
 // Funkce pro parsování, validaci a ukládání (až) dvou hodnot nastavení
@@ -263,10 +277,9 @@ bool zpracujUniverzalniPrikaz(const char* command, unsigned int minValue, unsign
 
 void loop() {
   // === PART 1: PWM Signal Detection ===
-  unsigned long stablePeriod;
-  int stableDutyCyclePromile;
+ 
   // test whether there are new values in the buffer
-  if (popMeasurement(stablePeriod, stableDutyCyclePromile)) {
+  if (popMeasurement(stablePeriod, stableDutyCyclePromile, impuls)) {
     // Data was successfully found and copied
     // test whether to flip the output
     if (stableDutyCyclePromile > 10 * aktualniNastaveni.horni_hranice) {
@@ -276,7 +289,7 @@ void loop() {
     }
     
     // here is added evaluation whether everything is within the correct limits
-    int stridaPromile = stableDutyCyclePromile;
+    stridaPromile = stableDutyCyclePromile;
     if (stableDutyCyclePromile > 500){
       stridaPromile = 1000 - stableDutyCyclePromile;
     }
@@ -325,7 +338,7 @@ void loop() {
 
   // === PART 2: Serial Communication Detection and Command Processing (C-string) ===
   while (Serial.available() > 0) {
-    char inChar = Serial.read();
+    inChar = Serial.read();
 
     if (inChar == '\n' || inChar == '\r') {
       if (bufferIndex > 0) { // Zpracovat příkaz, pokud něco přišlo
@@ -355,6 +368,8 @@ void loop() {
       tiskniProgmem(TEXT_L);
       tiskniProgmem(TEXT_HIDN);
       tiskniProgmem(TEXT_FETC);
+      tiskniProgmem(TEXT_PWID);
+
     } 
     else if (strcmp(cmd, "*IDN?") == 0){
       //*IDN?
@@ -362,8 +377,14 @@ void loop() {
     }
     else if (strcmp(cmd, ":FETCh?") == 0 || strcmp(cmd, ":FETC?") == 0 || strcmp(cmd, ":FETCH?") == 0 ){
       //:FETCh?
-      Serial.print(stableDutyCyclePromile);
+      Serial.println(stableDutyCyclePromile);
     }
+    else if (strcmp(cmd, ":MEASure:PWIDth?") == 0 || strcmp(cmd, ":MEAS:PWID?") == 0 || strcmp(cmd, ":MEASURE:PWIDTH?") == 0 ){
+      //:MEASure:PWIDth?
+      pwid = (float)impuls / 1000000.0;
+      Serial.println(pwid,6);
+    }
+
     else if (strncmp(cmd, "-te", 3) == 0) {
       if (! zpracujUniverzalniPrikaz(cmd, 100, 65000, nullptr, nullptr, &aktualniNastaveni.t_error,  nullptr)){
         VypisChybu(TEXT_TE);
@@ -390,7 +411,7 @@ void loop() {
       };
     } 
     else if (strncmp(cmd, "-s", 2) == 0) {
-      if (! zpracujUniverzalniPrikaz(cmd, 1, 999, nullptr, nullptr, &aktualniNastaveni.min_strida, &aktualniNastaveni.max_strida)){
+      if (! zpracujUniverzalniPrikaz(cmd, 1, 499, nullptr, nullptr, &aktualniNastaveni.min_strida, &aktualniNastaveni.max_strida)){
         VypisChybu(TEXT_S);
       };
     } 

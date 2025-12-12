@@ -70,6 +70,9 @@ volatile unsigned long lowDuration = 0;
 volatile bool pinState = false; // Current state of the pin
 
 // --- GLOBALNI DEKLARACE PROMENNYCH používaných ve smičce loop
+unsigned long casPoslednihoOdmeru; // cas kdy bylo naposledy uspěšně přečteno měření z bufferu
+bool testuj=false;           // zda se vyhodnocovat nový odměr
+const int casVypadku=200;    // doba po které se vyhodnotí neexistence signálu na Pin2 
 unsigned long stablePeriod;  // perioda v us
 int stableDutyCyclePromile;  // střída v promile skutečná od 0 do 1000
 int stridaPromile;           // střida v promile překlopena tak, aby byla od 0 do 500
@@ -224,7 +227,7 @@ void setup() {
   zobrazNastaveni();
   Serial.print("\n");
   tiskniProgmem(TEXT_H); 
-
+  casPoslednihoOdmeru=millis();
 }
 
 // Funkce pro parsování, validaci a ukládání (až) dvou hodnot nastavení
@@ -308,6 +311,12 @@ void loop() {
   if (popMeasurement(stablePeriod, stableDutyCyclePromile, impuls)) {
     // Data was successfully found and copied
     // test whether to flip the output
+    casPoslednihoOdmeru =millis();
+    testuj=true;
+  }
+
+  if(testuj){
+    testuj=false;
     if (stableDutyCyclePromile > 10 * aktualniNastaveni.horni_hranice) {
       digitalWrite(OUTPUT_PIN, !aktualniNastaveni.input);
     } else if (stableDutyCyclePromile < 10 * aktualniNastaveni.spodni_hranice) {
@@ -333,7 +342,7 @@ void loop() {
     } else{
       pocetChybStridy=0;
     }
-
+    
     // Test period tolerance
     if (stablePeriod < aktualniNastaveni.min_perioda || stablePeriod > aktualniNastaveni.max_perioda ){
       if (pocetChybPeriody == 0){
@@ -360,6 +369,14 @@ void loop() {
       Serial.print(F("Frequency: ")); Serial.print(frequencyHz); Serial.print(F(" Hz | Duty Cycle: ")); Serial.print(stableDutyCyclePromile/10.0); Serial.println(F(" %"));
       delay(200);
     }
+  }
+
+  if (millis()-casPoslednihoOdmeru>casVypadku){
+    stablePeriod=0;
+    stableDutyCyclePromile=0;
+    impuls=0;
+    testuj=true;
+    casPoslednihoOdmeru=millis();
   }
 
   // === PART 2: Serial Communication Detection and Command Processing (C-string) ===

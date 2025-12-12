@@ -548,24 +548,12 @@ void loop() {
   #endif
 }
 
-void tiskniFloat(float cislo, int pocetDesetinnChyb, char separator) {
-    // 1. Převod čísla na String pomocí standardní tečky
-    String s = String(cislo, pocetDesetinnChyb);
-
-    // 2. Najdi pozici desetinné tečky
-    int teckaIndex = s.indexOf('.');
-
-    if (teckaIndex != -1) {
-        // 3. Rozděl řetězec na celou a desetinnou část
-        String celaCast = s.substring(0, teckaIndex);
-        String desetinnaCast = s.substring(teckaIndex + 1);
-
-        // 4. Vytiskni s čárkou
-        Serial.print(celaCast);
-        Serial.print(separator); // Tady je čárka!
-        Serial.print(desetinnaCast);
-    } else {
-        // Pokud číslo neobsahuje desetinnou část (je celé), vytiskni ho normálně
-        Serial.print(s);
+void tiskniFloat(float cislo, int pocetDesetinychMist,  char separator) {
+    char buffer[13]; 
+    dtostrf(cislo, 0, pocetDesetinychMist, buffer);
+    char *tecka = strchr(buffer, '.');
+    if (tecka != NULL) {
+        *tecka = separator;
     }
+    Serial.print(buffer);
 }

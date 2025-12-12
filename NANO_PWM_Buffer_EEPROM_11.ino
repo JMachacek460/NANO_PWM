@@ -45,9 +45,6 @@ const char TEXT_PER[] PROGMEM = ":MEASure:PERiod? returns the signal period valu
 const char TEXT_DS[] PROGMEM = "-ds [char] decimal separator.";
 const char TEXT_CS[] PROGMEM = "-cs [char] columns separator.";
 
-
-
-
 #define ERROR_OFF 255
 #define MAX_COMMAND_LENGTH 60 // Max. délka příkazu pro char buffer
 
@@ -71,8 +68,8 @@ volatile bool pinState = false; // Current state of the pin
 
 // --- GLOBALNI DEKLARACE PROMENNYCH používaných ve smičce loop
 unsigned long casPoslednihoOdmeru; // cas kdy bylo naposledy uspěšně přečteno měření z bufferu
-bool testuj=false;           // zda se vyhodnocovat nový odměr
-const int casVypadku=200;    // doba po které se vyhodnotí neexistence signálu na Pin2 
+bool testuj=false;           // true - má se vyhodnocovat nový odměr nebo výpadek signálu
+const int casVypadku=200;    // doba v ms po které se vyhodnotí neexistence signálu na Pin2 
 unsigned long stablePeriod;  // perioda v us
 int stableDutyCyclePromile;  // střída v promile skutečná od 0 do 1000
 int stridaPromile;           // střida v promile překlopena tak, aby byla od 0 do 500
@@ -183,7 +180,7 @@ void zobrazNastaveni() {
   Serial.print(F("Listing of measured frequency and duty cycle values: ")); Serial.print(aktualniNastaveni.listing); Serial.println(F("[0-No; 1-Yes]"));
   Serial.print(F("Decimal separator: '")); Serial.print(aktualniNastaveni.decimalSeparator); Serial.println(F("'"));
   Serial.print(F("Columns separator: '")); Serial.print(aktualniNastaveni.columnsSeparator); Serial.println(F("'"));
-}
+} //void zobrazNastaveni() 
 
 void tovarniNastaveni(){
     strncpy(aktualniNastaveni.verze, VERSION, VERSION_SIZE);
@@ -202,7 +199,7 @@ void tovarniNastaveni(){
     aktualniNastaveni.columnsSeparator=';';
   
     EEPROM.put(EEPROM_ADRESA, aktualniNastaveni);
-}
+} //void tovarniNastaveni
 
 
 void setup() {
@@ -301,7 +298,17 @@ bool zpracujUniverzalniPrikaz(const char* command, unsigned int minValue, unsign
       //zobrazNastaveni();
       return false;
     }
-}
+} //bool zpracujUniverzalniPrikaz
+
+void tiskniFloat(float cislo, int pocetDesetinychMist,  char separator) {
+    char buffer[13]; 
+    dtostrf(cislo, 0, pocetDesetinychMist, buffer);
+    char *tecka = strchr(buffer, '.');
+    if (tecka != NULL) {
+        *tecka = separator;
+    }
+    Serial.print(buffer);
+} // void tiskniFloat
 
 
 void loop() {
@@ -310,12 +317,12 @@ void loop() {
   // test whether there are new values in the buffer
   if (popMeasurement(stablePeriod, stableDutyCyclePromile, impuls)) {
     // Data was successfully found and copied
-    // test whether to flip the output
     casPoslednihoOdmeru =millis();
     testuj=true;
   }
 
   if(testuj){
+    // test whether to flip the output
     testuj=false;
     if (stableDutyCyclePromile > 10 * aktualniNastaveni.horni_hranice) {
       digitalWrite(OUTPUT_PIN, !aktualniNastaveni.input);
@@ -369,15 +376,16 @@ void loop() {
       Serial.print(F("Frequency: ")); Serial.print(frequencyHz); Serial.print(F(" Hz | Duty Cycle: ")); Serial.print(stableDutyCyclePromile/10.0); Serial.println(F(" %"));
       delay(200);
     }
-  }
+  } //konec testuj
 
   if (millis()-casPoslednihoOdmeru>casVypadku){
+    // watchdog
     stablePeriod=0;
     stableDutyCyclePromile=0;
     impuls=0;
     testuj=true;
     casPoslednihoOdmeru=millis();
-  }
+  } // if (millis()-casPoslednihoOdmeru>casVypadku)
 
   // === PART 2: Serial Communication Detection and Command Processing (C-string) ===
   while (Serial.available() > 0) {
@@ -396,13 +404,13 @@ void loop() {
         incomingBuffer[bufferIndex++] = inChar;
       }
     }
-  }
+  } //while (Serial.available() > 0) 
 
   if (newData) {
     // --- Používáme C-řetězce a strcmp/strncmp místo String.equals/startsWith ---
     cmd = incomingBuffer;
     precteno = 0; 
-    while ( precteno!=255){
+    while (precteno!=255){
       if (strcmp(cmd, "-h") == 0) {
         tiskniProgmem(TEXT_T);
         tiskniProgmem(TEXT_I);
@@ -419,19 +427,19 @@ void loop() {
         tiskniProgmem(TEXT_PWID);
         tiskniProgmem(TEXT_PER);
         
-        precteno = 255;
+        precteno = 255; //ukončí dekodování incomingBufferu
       } 
       if (strncmp(cmd, "*idn?", 5) == 0){
         //*IDN?
         Serial.print(reinterpret_cast<const __FlashStringHelper *>(TEXT_IDN)); Serial.print(F(" Version: ")); Serial.println(aktualniNastaveni.verze);
-        precteno = 255;
+        precteno = 255; //ukončí dekodování incomingBufferu
       }
       if (strncmp(cmd, "*rst", 4) == 0){
         //*RST
         Serial.print(reinterpret_cast<const __FlashStringHelper *>(TEXT_RST)); Serial.print(F(" Version: ")); Serial.println(aktualniNastaveni.verze);
         tovarniNastaveni();
         zobrazNastaveni();
-        precteno = 255;
+        precteno = 255; //ukončí dekodování incomingBufferu
       }
       if (strncmp(cmd, ":fetch?", 7) == 0 ){
         //:FETCh?
@@ -480,42 +488,42 @@ void loop() {
       if (strncmp(cmd, "-te", 3) == 0) {
         if (! zpracujUniverzalniPrikaz(cmd, 100, 65000, nullptr, nullptr, &aktualniNastaveni.t_error,  nullptr)){
           tiskniProgmem(TEXT_TE);
-        }; precteno = 255;
+        }; precteno = 255; //ukončí dekodování incomingBufferu
       } 
       if (strncmp(cmd, "-t ", 3) == 0) {
         if (! zpracujUniverzalniPrikaz(cmd, 1, 99, &aktualniNastaveni.spodni_hranice, &aktualniNastaveni.horni_hranice)){
           tiskniProgmem(TEXT_T);
-        }; precteno = 255;
+        }; precteno = 255; //ukončí dekodování incomingBufferu
       } 
       if (strncmp(cmd, "-i", 2) == 0) {
         if (! zpracujUniverzalniPrikaz(cmd, 0, 1, &aktualniNastaveni.input, nullptr, nullptr, nullptr)){
           tiskniProgmem(TEXT_I);
-        }; precteno = 255;
+        }; precteno = 255; //ukončí dekodování incomingBufferu
       } 
       if (strncmp(cmd, "-l", 2) == 0) {
         if (! zpracujUniverzalniPrikaz(cmd, 0, 1, &aktualniNastaveni.listing, nullptr, nullptr, nullptr)){
           tiskniProgmem(TEXT_L);
-        }; precteno = 255;
+        }; precteno = 255; //ukončí dekodování incomingBufferu
       }
       if (strncmp(cmd, "-p", 2) == 0) {
         if (! zpracujUniverzalniPrikaz(cmd, 100, 65000, nullptr, nullptr, &aktualniNastaveni.min_perioda, &aktualniNastaveni.max_perioda)){
           tiskniProgmem(TEXT_P);
-        }; precteno = true;
+        }; precteno = 255; //ukončí dekodování incomingBufferu
       } 
       if (strncmp(cmd, "-s", 2) == 0) {
         if (! zpracujUniverzalniPrikaz(cmd, 1, 499, nullptr, nullptr, &aktualniNastaveni.min_strida, &aktualniNastaveni.max_strida)){
           tiskniProgmem(TEXT_S);
-        }; precteno = 255;
+        }; precteno = 255; //ukončí dekodování incomingBufferu
       } 
       if (strncmp(cmd, "-e", 2) == 0) {
         if (! zpracujUniverzalniPrikaz(cmd, 0, 255, &aktualniNastaveni.max_error, nullptr, nullptr, nullptr)){
           tiskniProgmem(TEXT_E);
-        }; precteno = 255;
+        }; precteno = 255; //ukončí dekodování incomingBufferu
       } 
       if (strncmp(cmd, "-b", 2) == 0) {
         if (! zpracujUniverzalniPrikaz(cmd, 96, 1152, nullptr, nullptr, &aktualniNastaveni.bps,  nullptr)){
           tiskniProgmem(TEXT_BPS);
-        }; precteno = 255;
+        }; precteno = 255; //ukončí dekodování incomingBufferu
       } 
       if (strncmp(cmd, "-ds", 3) == 0) {
         if(strlen(cmd) == 5) {
@@ -524,7 +532,7 @@ void loop() {
           EEPROM.put(EEPROM_ADRESA, aktualniNastaveni);
           Serial.println(F("\nLimits successfully updated:"));
           zobrazNastaveni();
-          precteno = 255;
+          precteno = 255; //ukončí dekodování incomingBufferu
         }
       } 
 
@@ -535,42 +543,31 @@ void loop() {
           EEPROM.put(EEPROM_ADRESA, aktualniNastaveni);
           Serial.println(F("\nLimits successfully updated:"));
           zobrazNastaveni();
-          precteno = 255;
+          precteno = 255; //ukončí dekodování incomingBufferu
         }
       }
       
       if (precteno==4){
-        //
+        // přidá konec řádku za poslední odměr
         Serial.print("\n");
-        precteno=255;
+        precteno=255; //ukončí dekodování incomingBufferu
       }
       if (precteno==0 || precteno==3 ){
         Serial.print(F("\nUnknown command or wrong format: "));
         Serial.println(cmd);
         tiskniProgmem(TEXT_H);
-        precteno=255;
+        precteno=255; //ukončí dekodování incomingBufferu
       }
       if (precteno == 2) precteno=3;
 
-    }
-    
-
-
+    } //while (precteno!=255)
+   
     bufferIndex = 0; // Reset index pro další příkaz
     newData = false;
-  }
+  } //if (newData)
 
   #ifdef DEBUG_MODE
     delay(100);
   #endif
 }
 
-void tiskniFloat(float cislo, int pocetDesetinychMist,  char separator) {
-    char buffer[13]; 
-    dtostrf(cislo, 0, pocetDesetinychMist, buffer);
-    char *tecka = strchr(buffer, '.');
-    if (tecka != NULL) {
-        *tecka = separator;
-    }
-    Serial.print(buffer);
-}

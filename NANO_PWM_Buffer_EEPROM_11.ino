@@ -35,7 +35,7 @@ const char TEXT_E[] PROGMEM = "-e [number1] to set the number of consecutive err
 const char TEXT_TE[] PROGMEM = "-te [number] minimum error signaling duration (10-65000) ms.";
 const char TEXT_BPS[] PROGMEM = "-b [number] Serial buat rate 96 -> 9600, 144 -> 14400, 192 -> 19200, 288 -> 28800, 384 -> 38400, 576 -> 57600, 1152 -> 115200";
 const char TEXT_L[] PROGMEM = "-l [number] 0/1 - no/yes lists current values of frequency and duty cycle.";
-const char TEXT_H[] PROGMEM = "-h for help\n";
+const char TEXT_H[] PROGMEM = "-h for help\r\n";
 const char TEXT_IDN[] PROGMEM = "Arduino NANO for measuring PWM signal duty cycle.";
 const char TEXT_HIDN[] PROGMEM = "*IDN? returns IDN";
 const char TEXT_RST[] PROGMEM = "*RST sets all parameters to factory settings.";
@@ -219,10 +219,10 @@ void setup() {
     tovarniNastaveni();
   }
   Serial.begin(aktualniNastaveni.bps * 100UL);
-  Serial.println(F("\n\nThe Arduino is ready to evaluate the rectangular signal on PIN 2. It will evaluate its period and duty cycle."));
+  Serial.println(F("\r\n\r\nThe Arduino is ready to evaluate the rectangular signal on PIN 2. It will evaluate its period and duty cycle."));
   Serial.println(F("Flipping PIN12 based on duty cycle and PIN6 based on error."));
   zobrazNastaveni();
-  Serial.print("\n");
+  Serial.print("\r\n");
   tiskniProgmem(TEXT_H); 
   casPoslednihoOdmeru=millis();
 }
@@ -252,7 +252,7 @@ bool zpracujUniverzalniPrikaz(const char* command, unsigned int minValue, unsign
       if (nove_spodni == 96 || nove_spodni == 144 || nove_spodni == 192 || nove_spodni == 288 || nove_spodni == 384 || nove_spodni == 576 || nove_spodni == 1152 ){
         if (uLowPtr) *uLowPtr = (unsigned int)nove_spodni;
         EEPROM.put(EEPROM_ADRESA, aktualniNastaveni);
-        Serial.println(F("\nLimits successfully updated:"));
+        Serial.println(F("\r\nLimits successfully updated:"));
         zobrazNastaveni();
         return true;
       }
@@ -276,14 +276,14 @@ bool zpracujUniverzalniPrikaz(const char* command, unsigned int minValue, unsign
         if (highPtr) *highPtr = (byte)nove_horni;
         
         EEPROM.put(EEPROM_ADRESA, aktualniNastaveni);
-        Serial.println(F("\nLimits successfully updated:"));
+        Serial.println(F("\r\nLimits successfully updated:"));
         zobrazNastaveni();
         return true;
 
     } else {
       error_range: // Cíl skoku pro chybovou zprávu
       // Hodnota je mimo rozsah nebo nesprávný formát
-      Serial.print(F("\nError: Values must be in the range ("));
+      Serial.print(F("\r\nError: Values must be in the range ("));
       Serial.print(minValue);
       Serial.print(F("-"));
       Serial.print(maxValue);
@@ -530,7 +530,7 @@ void loop() {
           char znak = cmd[4];
           aktualniNastaveni.decimalSeparator=znak;
           EEPROM.put(EEPROM_ADRESA, aktualniNastaveni);
-          Serial.println(F("\nLimits successfully updated:"));
+          Serial.println(F("\r\nLimits successfully updated:"));
           zobrazNastaveni();
           precteno = 255; //ukončí dekodování incomingBufferu
         }
@@ -541,7 +541,7 @@ void loop() {
           char znak = cmd[4];
           aktualniNastaveni.columnsSeparator=znak;
           EEPROM.put(EEPROM_ADRESA, aktualniNastaveni);
-          Serial.println(F("\nLimits successfully updated:"));
+          Serial.println(F("\r\nLimits successfully updated:"));
           zobrazNastaveni();
           precteno = 255; //ukončí dekodování incomingBufferu
         }
@@ -549,11 +549,11 @@ void loop() {
       
       if (precteno==4){
         // přidá konec řádku za poslední odměr
-        Serial.print("\n");
+        Serial.print("\r\n");
         precteno=255; //ukončí dekodování incomingBufferu
       }
       if (precteno==0 || precteno==3 ){
-        Serial.print(F("\nUnknown command or wrong format: "));
+        Serial.print(F("\r\nUnknown command or wrong format: "));
         Serial.println(cmd);
         tiskniProgmem(TEXT_H);
         precteno=255; //ukončí dekodování incomingBufferu

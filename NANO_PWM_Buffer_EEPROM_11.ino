@@ -3,30 +3,33 @@
  * Description: Reads PWM from pin 2 and controls an LED on pin 12, or pin 6 based on error evaluation.
  * Includes serial communication handling with commands -h -t -i -p -s -e -te -b -l including range validation.
  * Date: 10.12.2025
- * Author: Jaroslav Macháček
+ * Author: Jaroslav Machacek
  *
- * OPTIMALIZACE: Textové konstanty přesunuty do PROGMEM (F() a const char PROGMEM)
- * Nahrazena třída String za char[] pro sériový vstup.
- * přidány příkazy pro měření *IDN?  :MEASure:PWIDth?  :FETCh? :MEASure:PERiod?
+ * OPTIMALIZACE: Textove konstanty presunuty do PROGMEM (F() a const char PROGMEM)
+ * Nahrazena trida String za char[] pro seriovou linku.
+ * pridany prikazy pro mereni *IDN?  :MEASure:PWIDth?  :FETCh? :MEASure:PERiod?
  */
+
 #include <Arduino.h>
 #include <EEPROM.h>
 #include <avr/pgmspace.h> // Pro PROGMEM
 #include <ctype.h> // Potreba pro funkci tolower()
 
-
-#define VERSION_SIZE 5
+//-------------------------------------
+// definice verze
+//-------------------------------------
 #define VERSION "V1.3"
+const size_t VERSION_SIZE = sizeof(VERSION);
 
 // If you uncomment the following line, you will activate debug mode
 //#define DEBUG_MODE 
 
-#define INPUT_PIN 2
-#define OUTPUT_PIN 12
-#define ERROR_PIN 6
-#define BUFFER_SIZE 10
+const byte INPUT_PIN = 2;
+const byte OUTPUT_PIN = 12;
+const byte ERROR_PIN = 6;
+const size_t BUFFER_SIZE = 10;
 
-// --- TEXTY PŘESUNUTY DO PROGMEM (ÚSPORA SRAM) ---
+// --- TEXTY PrESUNUTY DO PROGMEM (ÚSPORA SRAM) ---
 const char TEXT_T[] PROGMEM = "-t [number1] [number2] to set duty cycle limits in % for flipping (1-99) pin6.";
 const char TEXT_I[] PROGMEM = "-i [number] 0/1 - no/yes invert output.";
 const char TEXT_P[] PROGMEM = "-p [number1] [number2] to set limits for correct period in us (100-65000).";
@@ -39,14 +42,16 @@ const char TEXT_H[] PROGMEM = "-h for help\r\n";
 const char TEXT_IDN[] PROGMEM = "Arduino NANO for measuring PWM signal duty cycle.";
 const char TEXT_HIDN[] PROGMEM = "*IDN? returns IDN";
 const char TEXT_RST[] PROGMEM = "*RST sets all parameters to factory settings.";
-const char TEXT_FETC[] PROGMEM = ":FETCh? returns the duty cycle values ​​of the PWM signal in per mille.";
+const char TEXT_FETC[] PROGMEM = ":FETCh? returns the duty cycle values of the PWM signal in per mille.";
 const char TEXT_PWID[] PROGMEM = ":MEASure:PWIDth? returns the length value of the HIGH signal.";
 const char TEXT_PER[] PROGMEM = ":MEASure:PERiod? returns the signal period value.";
 const char TEXT_DS[] PROGMEM = "-ds [char] decimal separator.";
 const char TEXT_CS[] PROGMEM = "-cs [char] columns separator.";
 
-#define ERROR_OFF 255
-#define MAX_COMMAND_LENGTH 60 // Max. délka příkazu pro char buffer
+const byte ERROR_OFF = 255;           // pokud je nastaveno pocet povolenych erroru na 255 tak se error nikdy nehlasi
+const size_t MAX_COMMAND_LENGTH = 60; // Max. delka prikazu pro char buffer
+const size_t EEPROM_ADRESA = 0;
+
 
 struct PwmMeasurement {
   unsigned long period;
@@ -54,8 +59,7 @@ struct PwmMeasurement {
   unsigned long impuls;
 };
 
-volatile unsigned long zacatekChyby=0;  // cas kdy začla chyba
-
+volatile unsigned long zacatekChyby=0;  // cas kdy zacla chyba
 volatile PwmMeasurement buffer[BUFFER_SIZE];
 volatile byte head = 0;
 volatile byte tail = 0;
@@ -66,24 +70,23 @@ volatile unsigned long highDuration = 0;
 volatile unsigned long lowDuration = 0;
 volatile bool pinState = false; // Current state of the pin
 
-// --- GLOBALNI DEKLARACE PROMENNYCH používaných ve smičce loop
-unsigned long casPoslednihoOdmeru; // cas kdy bylo naposledy uspěšně přečteno měření z bufferu
-bool testuj=false;           // true - má se vyhodnocovat nový odměr nebo výpadek signálu
-const int casVypadku=200;    // doba v ms po které se vyhodnotí neexistence signálu na Pin2 
-unsigned long stablePeriod;  // perioda v us
-int stableDutyCyclePromile;  // střída v promile skutečná od 0 do 1000
-int stridaPromile;           // střida v promile překlopena tak, aby byla od 0 do 500
-unsigned long impuls;        // delka impulsu v us
-float pwid = 0.0;            // delka impulsu v sekundách
-char inChar;                 // po čtení seriové linky
-const char *cmd;             // ukazatel na incomingBuffer
-byte precteno;               // 0 - nic se zatím nenačetko; 2 - byl načten příkaz pro měření; 3 - byl vytisknut poslední přikaz pro měřeni; 255-ukončit while
-//bool nacteno;                // zda byl dekodován nějaký příkaz
-char incomingBuffer[MAX_COMMAND_LENGTH];
-byte bufferIndex = 0; 
-bool newData = false;
-int pocetChybStridy=0;
-int pocetChybPeriody=0;
+// --- GLOBALNI DEKLARACE PROMENNYCH pouzivanych ve smicce loop
+unsigned long casPoslednihoOdmeru;  // cas kdy bylo naposledy uspesne precteno mereni z bufferu
+bool testuj=false;                  // true - ma se vyhodnocovat novy odmer nebo vypadek signalu
+const unsigned int casVypadku=200;  // doba v ms po ktere se vyhodnoti neexistence signalu na Pin2 
+unsigned long stablePeriod;         // perioda v us
+unsigned int stableDutyCyclePromile;         // strida v promile skutecna od 0 do 1000
+unsigned int normalizovanaStridaPromile;     // normalizovana strida v promile preklopena tak, aby byla od 0 do 500
+unsigned long impuls;               // namerena delka impulsu v us
+float pwid = 0.0;                   // delka impulsu v sekundach
+char inChar;                        // po cteni seriove linky
+const char *cmd;                    // ukazatel na incomingBuffer
+byte precteno;                      // 0 - nic se zatim nenacetko; 2 - byl nacten prikaz pro mereni; 3 - byl vytisknut posledni prikaz pro mereni; 255-ukoncit while
+char incomingBuffer[MAX_COMMAND_LENGTH];     // buffer pro nacitani seriove linky
+size_t bufferIndex = 0;             // ukazatel na buffer seriove linky
+bool newData = false;               // true - kdyz jsou data v incomingBuffer ukončena CF nabo LF a je načase je zpracovat
+byte pocetChybStridy=0;             // pocitadlo kolikrat za sebou byla detekovana chyba stridy
+byte pocetChybPeriody=0;            // pocitadlo kolikrat za sebou byla detekovana chyba periody
 
 void pushMeasurement(unsigned long period, int dutyCycle, unsigned long impuls) {
   byte nextHead = (head + 1) % BUFFER_SIZE;
@@ -95,7 +98,7 @@ void pushMeasurement(unsigned long period, int dutyCycle, unsigned long impuls) 
   }
 }
 
-bool popMeasurement(unsigned long &period, int &dutyCycle, unsigned long &impuls) {
+bool popMeasurement(unsigned long &period, unsigned int &dutyCycle, unsigned long &impuls) {
   if (head == tail) return false;
   period = buffer[tail].period;
   dutyCycle = buffer[tail].dutyCyclePromile;
@@ -111,7 +114,7 @@ void handlePinChange() {
   unsigned long currentTime = micros();
   unsigned long duration = currentTime - lastEdgeTime;
   lastEdgeTime = currentTime; // Update the edge time immediately
-  bool log1=0;                // definice jaká je hodnota na stupu když optočlenem protéká proud
+  bool log1=0;                // definice jaka je hodnota na stupu kdyz optoclenem proteka proud
 
   if (digitalRead(INPUT_PIN) == log1) {
     // Transition from LOW to HIGH arrived. The previous segment was LOW.
@@ -135,9 +138,11 @@ void handlePinChange() {
   }
 }
 
+//--------------------------------------------------------------
 // Structure definition that holds all our data together
+//--------------------------------------------------------------
 struct MojeNastaveni {
-  char verze[VERSION_SIZE]; // verze např V01.0
+  char verze[VERSION_SIZE]; // verze napr V01.0
   byte spodni_hranice;      // in % when it should switch to LOW
   byte horni_hranice;      // in % when it should switch to HIGH
   byte input;              // typ LOW/HIGH
@@ -156,10 +161,7 @@ struct MojeNastaveni {
 // Global instance of our structure, which we will work with in the program
 MojeNastaveni aktualniNastaveni;
 
-const int EEPROM_ADRESA = 0;
-
-
-// Pomocná funkce pro tisk řetězců z PROGMEM
+// Pomocna funkce pro tisk retezců z PROGMEM
 void tiskniProgmem(const char *str) {
   Serial.print(F("Command: "));
   Serial.println(reinterpret_cast<const __FlashStringHelper *>(str));
@@ -201,7 +203,6 @@ void tovarniNastaveni(){
     EEPROM.put(EEPROM_ADRESA, aktualniNastaveni);
 } //void tovarniNastaveni
 
-
 void setup() {
   pinMode(INPUT_PIN, INPUT);
   pinMode(OUTPUT_PIN, OUTPUT);
@@ -214,7 +215,7 @@ void setup() {
 
   // Test if there is unreasonable data in EEPROM, then set default values and write them to EEPROM
   if (strcmp(aktualniNastaveni.verze, VERSION) != 0){
-    Serial.begin(9600); // Dočasné
+    Serial.begin(9600); // Docasne
     Serial.println(F("First run !!!!"));
     tovarniNastaveni();
   }
@@ -227,27 +228,27 @@ void setup() {
   casPoslednihoOdmeru=millis();
 }
 
-// Funkce pro parsování, validaci a ukládání (až) dvou hodnot nastavení
+// Funkce pro parsovani, validaci a ukladani (az) dvou hodnot nastaveni
 bool zpracujUniverzalniPrikaz(const char* command, unsigned int minValue, unsigned int maxValue, byte* lowPtr, byte* highPtr, unsigned int* uLowPtr = nullptr, unsigned int* uHighPtr = nullptr) {
     long nove_spodni = -1;
     long nove_horni = -1;
     int count;
 
-    // Zkusíme parsovat dvě čísla
+    // Zkusime parsovat dve cisla
     if (uHighPtr != nullptr || highPtr != nullptr) {
-        // Formát: -x číslo1 číslo2
-        // Použití sscanf pro parsování příkazu a dvou čísel. Ignorujeme návratovou hodnotu.
+        // Format: -x cislo1 cislo2
+        // Pouziti sscanf pro parsovani prikazu a dvou cisel. Ignorujeme navratovou hodnotu.
         count = sscanf(command, "%*s %ld %ld", &nove_spodni, &nove_horni);
         if (count < 2) return false;
     } else {
-        // Formát: -x číslo1
-        // Pro příkazy s jedním číslem (-e, -i, -l, -te, -b)
+        // Format: -x cislo1
+        // Pro prikazy s jednim cislem (-e, -i, -l, -te, -b)
         count = sscanf(command, "%*s %ld", &nove_spodni);
         if (count < 1) return false;
-        nove_horni = nove_spodni; // Pro validaci nastavíme horní na spodní
+        nove_horni = nove_spodni; // Pro validaci nastavime horni na spodni
     }
 
-    // --- SPECIÁLNÍ VALIDACE PRO BPS ---
+    // --- SPECIaLNi VALIDACE PRO BPS ---
     if (strcmp(command, "-b") == 0) {
       if (nove_spodni == 96 || nove_spodni == 144 || nove_spodni == 192 || nove_spodni == 288 || nove_spodni == 384 || nove_spodni == 576 || nove_spodni == 1152 ){
         if (uLowPtr) *uLowPtr = (unsigned int)nove_spodni;
@@ -256,20 +257,20 @@ bool zpracujUniverzalniPrikaz(const char* command, unsigned int minValue, unsign
         zobrazNastaveni();
         return true;
       }
-      // Pokud je bps mimo povolené hodnoty
-      goto error_range; // Použití goto pro skok na tisk chyby (úspora opakování kódu)
+      // Pokud je bps mimo povolene hodnoty
+      goto error_range; // Pouziti goto pro skok na tisk chyby (úspora opakovani kódu)
     }
 
-    // --- UNIVERZÁLNÍ ROZSAHOVÁ VALIDACE ---
+    // --- UNIVERZaLNi ROZSAHOVa VALIDACE ---
     bool rangeValid = (nove_spodni >= minValue && nove_spodni <= maxValue && 
                        nove_horni >= minValue && nove_horni <= maxValue);
 
-    if (uHighPtr != nullptr || highPtr != nullptr) { // Jen pro příkazy se dvěma hodnotami
+    if (uHighPtr != nullptr || highPtr != nullptr) { // Jen pro prikazy se dvema hodnotami
         rangeValid = rangeValid && (nove_spodni <= nove_horni);
     }
 
     if (rangeValid) {
-        // Uložení hodnot do příslušných proměnných pomocí pointerů
+        // Ulozeni hodnot do prislusnych promennych pomoci pointerů
         if (uLowPtr) *uLowPtr = (unsigned int)nove_spodni;
         if (uHighPtr) *uHighPtr = (unsigned int)nove_horni;
         if (lowPtr) *lowPtr = (byte)nove_spodni;
@@ -281,8 +282,8 @@ bool zpracujUniverzalniPrikaz(const char* command, unsigned int minValue, unsign
         return true;
 
     } else {
-      error_range: // Cíl skoku pro chybovou zprávu
-      // Hodnota je mimo rozsah nebo nesprávný formát
+      error_range: // Cil skoku pro chybovou zpravu
+      // Hodnota je mimo rozsah nebo nespravny format
       Serial.print(F("\r\nError: Values must be in the range ("));
       Serial.print(minValue);
       Serial.print(F("-"));
@@ -310,7 +311,6 @@ void tiskniFloat(float cislo, int pocetDesetinychMist,  char separator) {
     Serial.print(buffer);
 } // void tiskniFloat
 
-
 void loop() {
   // === PART 1: PWM Signal Detection ===
  
@@ -331,13 +331,13 @@ void loop() {
     }
     
     // here is added evaluation whether everything is within the correct limits
-    stridaPromile = stableDutyCyclePromile;
+    normalizovanaStridaPromile = stableDutyCyclePromile;
     if (stableDutyCyclePromile > 500){
-      stridaPromile = 1000 - stableDutyCyclePromile;
+      normalizovanaStridaPromile = 1000 - stableDutyCyclePromile;
     }
     
     // Test duty cycle tolerance
-    if (stridaPromile < aktualniNastaveni.min_strida || stridaPromile > aktualniNastaveni.max_strida ){
+    if (normalizovanaStridaPromile < aktualniNastaveni.min_strida || normalizovanaStridaPromile > aktualniNastaveni.max_strida ){
       if (pocetChybStridy==0){
         zacatekChyby=millis();
       }
@@ -392,13 +392,13 @@ void loop() {
     inChar = Serial.read();
 
     if (inChar == '\n' || inChar == '\r') {
-      if (bufferIndex > 0) { // Zpracovat příkaz, pokud něco přišlo
-        incomingBuffer[bufferIndex] = '\0'; // Ukončovací znak
+      if (bufferIndex > 0) { // Zpracovat prikaz, pokud neco prislo
+        incomingBuffer[bufferIndex] = '\0'; // Ukoncovaci znak
         newData = true;
         break; 
       }
     } else if (bufferIndex < MAX_COMMAND_LENGTH - 1) {
-      // Přidáme jen znaky a ignorujeme whitespace na začátku
+      // Pridame jen znaky a ignorujeme whitespace na zacatku
       if (bufferIndex > 0 || inChar != ' ') {
         inChar = tolower(inChar);
         incomingBuffer[bufferIndex++] = inChar;
@@ -407,7 +407,6 @@ void loop() {
   } //while (Serial.available() > 0) 
 
   if (newData) {
-    // --- Používáme C-řetězce a strcmp/strncmp místo String.equals/startsWith ---
     cmd = incomingBuffer;
     precteno = 0; 
     while (precteno!=255){
@@ -427,19 +426,19 @@ void loop() {
         tiskniProgmem(TEXT_PWID);
         tiskniProgmem(TEXT_PER);
         
-        precteno = 255; //ukončí dekodování incomingBufferu
+        precteno = 255; //ukonci dekodovani incomingBufferu
       } 
       if (strncmp(cmd, "*idn?", 5) == 0){
         //*IDN?
         Serial.print(reinterpret_cast<const __FlashStringHelper *>(TEXT_IDN)); Serial.print(F(" Version: ")); Serial.println(aktualniNastaveni.verze);
-        precteno = 255; //ukončí dekodování incomingBufferu
+        precteno = 255; //ukonci dekodovani incomingBufferu
       }
       if (strncmp(cmd, "*rst", 4) == 0){
         //*RST
         Serial.print(reinterpret_cast<const __FlashStringHelper *>(TEXT_RST)); Serial.print(F(" Version: ")); Serial.println(aktualniNastaveni.verze);
         tovarniNastaveni();
         zobrazNastaveni();
-        precteno = 255; //ukončí dekodování incomingBufferu
+        precteno = 255; //ukonci dekodovani incomingBufferu
       }
       if (strncmp(cmd, ":fetch?", 7) == 0 ){
         //:FETCh?
@@ -488,42 +487,42 @@ void loop() {
       if (strncmp(cmd, "-te", 3) == 0) {
         if (! zpracujUniverzalniPrikaz(cmd, 100, 65000, nullptr, nullptr, &aktualniNastaveni.t_error,  nullptr)){
           tiskniProgmem(TEXT_TE);
-        }; precteno = 255; //ukončí dekodování incomingBufferu
+        }; precteno = 255; //ukonci dekodovani incomingBufferu
       } 
       if (strncmp(cmd, "-t ", 3) == 0) {
         if (! zpracujUniverzalniPrikaz(cmd, 1, 99, &aktualniNastaveni.spodni_hranice, &aktualniNastaveni.horni_hranice)){
           tiskniProgmem(TEXT_T);
-        }; precteno = 255; //ukončí dekodování incomingBufferu
+        }; precteno = 255; //ukonci dekodovani incomingBufferu
       } 
       if (strncmp(cmd, "-i", 2) == 0) {
         if (! zpracujUniverzalniPrikaz(cmd, 0, 1, &aktualniNastaveni.input, nullptr, nullptr, nullptr)){
           tiskniProgmem(TEXT_I);
-        }; precteno = 255; //ukončí dekodování incomingBufferu
+        }; precteno = 255; //ukonci dekodovani incomingBufferu
       } 
       if (strncmp(cmd, "-l", 2) == 0) {
         if (! zpracujUniverzalniPrikaz(cmd, 0, 1, &aktualniNastaveni.listing, nullptr, nullptr, nullptr)){
           tiskniProgmem(TEXT_L);
-        }; precteno = 255; //ukončí dekodování incomingBufferu
+        }; precteno = 255; //ukonci dekodovani incomingBufferu
       }
       if (strncmp(cmd, "-p", 2) == 0) {
         if (! zpracujUniverzalniPrikaz(cmd, 100, 65000, nullptr, nullptr, &aktualniNastaveni.min_perioda, &aktualniNastaveni.max_perioda)){
           tiskniProgmem(TEXT_P);
-        }; precteno = 255; //ukončí dekodování incomingBufferu
+        }; precteno = 255; //ukonci dekodovani incomingBufferu
       } 
       if (strncmp(cmd, "-s", 2) == 0) {
         if (! zpracujUniverzalniPrikaz(cmd, 1, 499, nullptr, nullptr, &aktualniNastaveni.min_strida, &aktualniNastaveni.max_strida)){
           tiskniProgmem(TEXT_S);
-        }; precteno = 255; //ukončí dekodování incomingBufferu
+        }; precteno = 255; //ukonci dekodovani incomingBufferu
       } 
       if (strncmp(cmd, "-e", 2) == 0) {
         if (! zpracujUniverzalniPrikaz(cmd, 0, 255, &aktualniNastaveni.max_error, nullptr, nullptr, nullptr)){
           tiskniProgmem(TEXT_E);
-        }; precteno = 255; //ukončí dekodování incomingBufferu
+        }; precteno = 255; //ukonci dekodovani incomingBufferu
       } 
       if (strncmp(cmd, "-b", 2) == 0) {
         if (! zpracujUniverzalniPrikaz(cmd, 96, 1152, nullptr, nullptr, &aktualniNastaveni.bps,  nullptr)){
           tiskniProgmem(TEXT_BPS);
-        }; precteno = 255; //ukončí dekodování incomingBufferu
+        }; precteno = 255; //ukonci dekodovani incomingBufferu
       } 
       if (strncmp(cmd, "-ds", 3) == 0) {
         if(strlen(cmd) == 5) {
@@ -532,7 +531,7 @@ void loop() {
           EEPROM.put(EEPROM_ADRESA, aktualniNastaveni);
           Serial.println(F("\r\nLimits successfully updated:"));
           zobrazNastaveni();
-          precteno = 255; //ukončí dekodování incomingBufferu
+          precteno = 255; //ukonci dekodovani incomingBufferu
         }
       } 
 
@@ -543,26 +542,26 @@ void loop() {
           EEPROM.put(EEPROM_ADRESA, aktualniNastaveni);
           Serial.println(F("\r\nLimits successfully updated:"));
           zobrazNastaveni();
-          precteno = 255; //ukončí dekodování incomingBufferu
+          precteno = 255; //ukonci dekodovani incomingBufferu
         }
       }
       
       if (precteno==4){
-        // přidá konec řádku za poslední odměr
+        // prida konec radku za posledni odmer
         Serial.print(F("\r\n"));
-        precteno=255; //ukončí dekodování incomingBufferu
+        precteno=255; //ukonci dekodovani incomingBufferu
       }
       if (precteno==0 || precteno==3 ){
         Serial.print(F("\r\nUnknown command or wrong format: "));
         Serial.println(cmd);
         tiskniProgmem(TEXT_H);
-        precteno=255; //ukončí dekodování incomingBufferu
+        precteno=255; //ukonci dekodovani incomingBufferu
       }
       if (precteno == 2) precteno=3;
 
     } //while (precteno!=255)
    
-    bufferIndex = 0; // Reset index pro další příkaz
+    bufferIndex = 0; // Reset index pro dalsi prikaz
     newData = false;
   } //if (newData)
 
@@ -570,4 +569,3 @@ void loop() {
     delay(100);
   #endif
 }
-

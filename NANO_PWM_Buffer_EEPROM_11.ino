@@ -177,7 +177,7 @@ void zobrazNastaveni() {
   Serial.print(F("Max number of errors: ")); Serial.println(aktualniNastaveni.max_error); 
   Serial.print(F("Min error signaling duration: ")); Serial.print(aktualniNastaveni.t_error); Serial.println(F(" ms"));
   Serial.print(F("Serial line speed: ")); Serial.print(aktualniNastaveni.bps); Serial.println(F("00 baud"));
-  Serial.print(F("Listing of measured frequency and duty cycle values: ")); Serial.print(aktualniNastaveni.listing); Serial.println(F("[0-No; 1-Yes]"));
+  Serial.print(F("Listing of measured frequency and duty cycle values: ")); Serial.print(aktualniNastaveni.listing); Serial.println(F(" [0-No; 1-Yes]"));
   Serial.print(F("Decimal separator: '")); Serial.print(aktualniNastaveni.decimalSeparator); Serial.println(F("'"));
   Serial.print(F("Columns separator: '")); Serial.print(aktualniNastaveni.columnsSeparator); Serial.println(F("'"));
 } //void zobrazNastaveni() 
@@ -222,7 +222,7 @@ void setup() {
   Serial.println(F("\r\n\r\nThe Arduino is ready to evaluate the rectangular signal on PIN 2. It will evaluate its period and duty cycle."));
   Serial.println(F("Flipping PIN12 based on duty cycle and PIN6 based on error."));
   zobrazNastaveni();
-  Serial.print("\r\n");
+  Serial.print(F("\r\n"));
   tiskniProgmem(TEXT_H); 
   casPoslednihoOdmeru=millis();
 }
@@ -444,14 +444,14 @@ void loop() {
       if (strncmp(cmd, ":fetch?", 7) == 0 ){
         //:FETCh?
         if(precteno==2 || precteno==3){ Serial.print(aktualniNastaveni.columnsSeparator);Serial.print(' ');}
-        Serial.println(stableDutyCyclePromile);
+        Serial.print(stableDutyCyclePromile);
         if (strlen(cmd) > 8) { cmd += 8; precteno = 2;}
         else precteno = 4;
       }
       if (strncmp(cmd, ":fetc?", 6) == 0 ){
         //:FETCh?
         if(precteno==2 || precteno==3){ Serial.print(aktualniNastaveni.columnsSeparator);Serial.print(' ');}
-        Serial.println(stableDutyCyclePromile);
+        Serial.print(stableDutyCyclePromile);
         if (strlen(cmd) > 7) { cmd += 7; precteno = 2;}
         else precteno = 4;
       }
@@ -549,7 +549,7 @@ void loop() {
       
       if (precteno==4){
         // přidá konec řádku za poslední odměr
-        Serial.print("\r\n");
+        Serial.print(F("\r\n"));
         precteno=255; //ukončí dekodování incomingBufferu
       }
       if (precteno==0 || precteno==3 ){

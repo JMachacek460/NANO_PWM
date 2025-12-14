@@ -24,45 +24,106 @@ const size_t VERSION_SIZE = sizeof(VERSION);
 // If you uncomment the following line, you will activate debug mode
 //#define DEBUG_MODE 
 
+//------------------------------------------------------------------------------
+// --- DEFINICE PINU
+//------------------------------------------------------------------------------
 const byte INPUT_PIN = 2;
 const byte OUTPUT_PIN = 12;
 const byte ERROR_PIN = 6;
-const size_t BUFFER_SIZE = 10;
 
-// --- TEXTY PrESUNUTY DO PROGMEM (ÚSPORA SRAM) ---
-const char TEXT_T[] PROGMEM = "-t [number1] [number2] to set duty cycle limits in % for flipping (1-99) pin6.";
+
+// --- TEXTY PRESUNUTY DO PROGMEM (USPORA SRAM) ---
+const char TEXT_T[] PROGMEM = "-t [number1] [number2] to set duty cycle limits in % for flipping (1-99) pin12.";
 const char TEXT_I[] PROGMEM = "-i [number] 0/1 - no/yes invert output.";
 const char TEXT_P[] PROGMEM = "-p [number1] [number2] to set limits for correct period in us (100-65000).";
 const char TEXT_S[] PROGMEM = "-s [number1] [number2] to set limits for correct duty cycle in permille (1-499).";
-const char TEXT_E[] PROGMEM = "-e [number1] to set the number of consecutive errors before the error pin (0-255) pin12 flips.";
+const char TEXT_E[] PROGMEM = "-e [number] to set the number of consecutive errors before the error pin (0-255) pin6 flips.";
 const char TEXT_TE[] PROGMEM = "-te [number] minimum error signaling duration (10-65000) ms.";
-const char TEXT_BPS[] PROGMEM = "-b [number] Serial buat rate 96 -> 9600, 144 -> 14400, 192 -> 19200, 288 -> 28800, 384 -> 38400, 576 -> 57600, 1152 -> 115200";
+const char TEXT_BPS[] PROGMEM = "-b [number] serial buat rate 96 -> 9600, 144 -> 14400, 192 -> 19200, 288 -> 28800, 384 -> 38400, 576 -> 57600, 1152 -> 115200.";
 const char TEXT_L[] PROGMEM = "-l [number] 0/1 - no/yes lists current values of frequency and duty cycle.";
-const char TEXT_H[] PROGMEM = "-h for help\r\n";
-const char TEXT_IDN[] PROGMEM = "Arduino NANO for measuring PWM signal duty cycle.";
+const char TEXT_DS[] PROGMEM = "-ds [char] decimal separator.";
+const char TEXT_CS[] PROGMEM = "-cs [char] columns separator.";
+const char TEXT_H[] PROGMEM = "-h for help.\r\n";
+
 const char TEXT_HIDN[] PROGMEM = "*IDN? returns IDN";
 const char TEXT_RST[] PROGMEM = "*RST sets all parameters to factory settings.";
 const char TEXT_FETC[] PROGMEM = ":FETCh? returns the duty cycle values of the PWM signal in per mille.";
 const char TEXT_PWID[] PROGMEM = ":MEASure:PWIDth? returns the length value of the HIGH signal.";
 const char TEXT_PER[] PROGMEM = ":MEASure:PERiod? returns the signal period value.";
-const char TEXT_DS[] PROGMEM = "-ds [char] decimal separator.";
-const char TEXT_CS[] PROGMEM = "-cs [char] columns separator.";
 
-const byte ERROR_OFF = 255;           // pokud je nastaveno pocet povolenych erroru na 255 tak se error nikdy nehlasi
+const char TEXT_IDN[] PROGMEM = "Arduino NANO for measuring PWM signal duty cycle.";
+
+
 const size_t MAX_COMMAND_LENGTH = 60; // Max. delka prikazu pro char buffer
-const size_t EEPROM_ADRESA = 0;
+const size_t EEPROM_ADRESA = 0;       // 
 
-
-struct PwmMeasurement {
-  unsigned long period;
-  int dutyCyclePromile;
-  unsigned long impuls;
+//------------------------------------------------------------------------------
+// ---DEFINICE STRUKTUR
+//------------------------------------------------------------------------------
+struct MojeSerialCommand {
+  char inChar;                                // po cteni seriove linky
+  const char *cmdPtr;                         // ukazatel na incomingBuffer pro zpracování
+  byte state = 0;                             // 0: nic, 2: mereni, 3: vytisknuto, 255: ukoncit
+  char buffer[MAX_COMMAND_LENGTH];            // buffer pro nacitani seriove linky
+  size_t index = 0;                           // ukazatel na buffer seriove linky
+  bool isNewData = false;                     // true, kdyz jsou data v bufferu ukončena a připravena ke zpracování
 };
 
-volatile unsigned long zacatekChyby=0;  // cas kdy zacla chyba
-volatile PwmMeasurement buffer[BUFFER_SIZE];
-volatile byte head = 0;
-volatile byte tail = 0;
+struct MeasurementData {
+    unsigned long period_us;                // stabilizovaná perioda v us
+    unsigned long pulseLength_us;           // namerena delka impulsu v us
+    unsigned int dutyCyclePromile;          // strida v promile skutecna (0-1000)
+    unsigned int normalizedDutyCycle;       // normalizovana strida (0-500)     
+};
+
+struct ControlState {
+    bool evaluateMeasurement = false;           // true - ma se vyhodnocovat novy odmer nebo vypadek signalu
+    unsigned long lastMeasurementTime;          // cas kdy bylo naposledy uspesne precteno mereni z bufferu
+    unsigned long startErrorTime=0;             // cas kdy zacla chyba
+    const unsigned int signalTimeout_ms = 200;  // casVypadku: doba v ms po ktere se vyhodnoti neexistence signalu
+    byte dutyCycleErrorCount = 0;               // pocitadlo kolikrat za sebou byla detekovana chyba stridy
+    byte periodErrorCount = 0;                  // pocitadlo kolikrat za sebou byla detekovana chyba periody
+    const byte ERROR_OFF = 255;                 // pokud je nastaveno pocet povolenych erroru na 255 tak se error nikdy nehlasi
+};
+// MojeNastaveni se uklada do EEPROM
+struct MojeNastaveni {
+  char verze[VERSION_SIZE]; // verze napr V01.0
+  byte spodni_hranice;      // in % when it should switch to LOW
+  byte horni_hranice;      // in % when it should switch to HIGH
+  byte input;              // typ LOW/HIGH
+  unsigned int min_perioda; // time in us
+  unsigned int max_perioda; // time in us
+  unsigned int min_strida;  // in permille (tenths of a percent)
+  unsigned int max_strida;  // in permille (tenths of a percent)
+  byte max_error;          // number of consecutive errors needed to flip the error pin
+  unsigned int t_error;    // minimum error signaling duration ms
+  unsigned int bps;        // Serial buat rate
+  byte listing;            // 0/1 - no/yes lists current values of frequency and duty cycle 
+  char decimalSeparator;
+  char columnsSeparator;   // 
+};
+
+//------------------------------------------------------------------------------
+// --- GLOBALNI DEKLARACE PROMENNYCH pouzivanych ve smicce loop
+//------------------------------------------------------------------------------
+MeasurementData mereni;
+MojeSerialCommand mSerial;
+ControlState control;
+MojeNastaveni aktualniNastaveni;
+
+//------------------------------------------------------------------------------
+// --- CAST NA DETEKCI PWM
+//------------------------------------------------------------------------------
+const size_t BUFFER_SIZE = 10;
+struct PwmMeasurement {
+  unsigned long period; // perioda v us
+  int duty;             // strida v promile
+  unsigned long impuls; // delka HIGH impulsu v us
+};
+
+volatile PwmMeasurement buffer[BUFFER_SIZE];  // kruhovy buffer pro data z preruseni
+volatile byte head = 0;                       // hlava bufferu PwmMeasurement
+volatile byte tail = 0;                       // ocas bufferu PwmMeasurement
 
 // Variables used in ISR
 volatile unsigned long lastEdgeTime = 0; 
@@ -70,29 +131,11 @@ volatile unsigned long highDuration = 0;
 volatile unsigned long lowDuration = 0;
 volatile bool pinState = false; // Current state of the pin
 
-// --- GLOBALNI DEKLARACE PROMENNYCH pouzivanych ve smicce loop
-unsigned long casPoslednihoOdmeru;  // cas kdy bylo naposledy uspesne precteno mereni z bufferu
-bool testuj=false;                  // true - ma se vyhodnocovat novy odmer nebo vypadek signalu
-const unsigned int casVypadku=200;  // doba v ms po ktere se vyhodnoti neexistence signalu na Pin2 
-unsigned long stablePeriod;         // perioda v us
-unsigned int stableDutyCyclePromile;         // strida v promile skutecna od 0 do 1000
-unsigned int normalizovanaStridaPromile;     // normalizovana strida v promile preklopena tak, aby byla od 0 do 500
-unsigned long impuls;               // namerena delka impulsu v us
-float pwid = 0.0;                   // delka impulsu v sekundach
-char inChar;                        // po cteni seriove linky
-const char *cmd;                    // ukazatel na incomingBuffer
-byte precteno;                      // 0 - nic se zatim nenacetko; 2 - byl nacten prikaz pro mereni; 3 - byl vytisknut posledni prikaz pro mereni; 255-ukoncit while
-char incomingBuffer[MAX_COMMAND_LENGTH];     // buffer pro nacitani seriove linky
-size_t bufferIndex = 0;             // ukazatel na buffer seriove linky
-bool newData = false;               // true - kdyz jsou data v incomingBuffer ukončena CF nabo LF a je načase je zpracovat
-byte pocetChybStridy=0;             // pocitadlo kolikrat za sebou byla detekovana chyba stridy
-byte pocetChybPeriody=0;            // pocitadlo kolikrat za sebou byla detekovana chyba periody
-
 void pushMeasurement(unsigned long period, int dutyCycle, unsigned long impuls) {
   byte nextHead = (head + 1) % BUFFER_SIZE;
   if (nextHead != tail) {
     buffer[head].period = period;
-    buffer[head].dutyCyclePromile = dutyCycle;
+    buffer[head].duty = dutyCycle;
     buffer[head].impuls = impuls;
     head = nextHead;
   }
@@ -101,7 +144,7 @@ void pushMeasurement(unsigned long period, int dutyCycle, unsigned long impuls) 
 bool popMeasurement(unsigned long &period, unsigned int &dutyCycle, unsigned long &impuls) {
   if (head == tail) return false;
   period = buffer[tail].period;
-  dutyCycle = buffer[tail].dutyCyclePromile;
+  dutyCycle = buffer[tail].duty;
   impuls = buffer[tail].impuls;
   tail = (tail + 1) % BUFFER_SIZE;
   return true;
@@ -123,43 +166,22 @@ void handlePinChange() {
     
     // If we have both components, we can calculate the period and duty cycle
     if (highDuration > 0 && lowDuration > 0) {
-        unsigned long currentPeriod = highDuration + lowDuration;
-        if (currentPeriod > 0) {
-             // Calculate duty cycle: highDuration / period * 1000
-             int dutyCycle = (highDuration * 1000UL) / currentPeriod;
-             pushMeasurement(currentPeriod, dutyCycle, highDuration);
-        }
+      unsigned long currentPeriod = highDuration + lowDuration;
+      if (currentPeriod > 0) {
+        int dutyCycle = (highDuration * 1000UL) / currentPeriod;
+        pushMeasurement(currentPeriod, dutyCycle, highDuration);
+      }
     }
-
   } else {
     // Transition from HIGH to LOW arrived. The previous segment was HIGH.
     highDuration = duration;
     pinState = false;
   }
 }
+//------------------------------------------------------------------------------
 
-//--------------------------------------------------------------
-// Structure definition that holds all our data together
-//--------------------------------------------------------------
-struct MojeNastaveni {
-  char verze[VERSION_SIZE]; // verze napr V01.0
-  byte spodni_hranice;      // in % when it should switch to LOW
-  byte horni_hranice;      // in % when it should switch to HIGH
-  byte input;              // typ LOW/HIGH
-  unsigned int min_perioda; // time in us
-  unsigned int max_perioda; // time in us
-  unsigned int min_strida;  // in permille (tenths of a percent)
-  unsigned int max_strida;  // in permille (tenths of a percent)
-  byte max_error;          // number of consecutive errors needed to flip the error pin
-  unsigned int t_error;    // minimum error signaling duration ms
-  unsigned int bps;        // Serial buat rate
-  byte listing;            // 0/1 - no/yes lists current values of frequency and duty cycle 
-  char decimalSeparator;
-  char columnsSeparator;   // 
-};
 
-// Global instance of our structure, which we will work with in the program
-MojeNastaveni aktualniNastaveni;
+
 
 // Pomocna funkce pro tisk retezců z PROGMEM
 void tiskniProgmem(const char *str) {
@@ -225,7 +247,7 @@ void setup() {
   zobrazNastaveni();
   Serial.print(F("\r\n"));
   tiskniProgmem(TEXT_H); 
-  casPoslednihoOdmeru=millis();
+  control.lastMeasurementTime=millis();
 }
 
 // Funkce pro parsovani, validaci a ukladani (az) dvou hodnot nastaveni
@@ -315,106 +337,106 @@ void loop() {
   // === PART 1: PWM Signal Detection ===
  
   // test whether there are new values in the buffer
-  if (popMeasurement(stablePeriod, stableDutyCyclePromile, impuls)) {
+  if (popMeasurement(mereni.period_us, mereni.dutyCyclePromile, mereni.pulseLength_us)) {
     // Data was successfully found and copied
-    casPoslednihoOdmeru =millis();
-    testuj=true;
+    control.lastMeasurementTime =millis();
+    control.evaluateMeasurement=true;
   }
 
-  if(testuj){
+  if(control.evaluateMeasurement){
     // test whether to flip the output
-    testuj=false;
-    if (stableDutyCyclePromile > 10 * aktualniNastaveni.horni_hranice) {
+    control.evaluateMeasurement=false;
+    if (mereni.dutyCyclePromile > 10 * aktualniNastaveni.horni_hranice) {
       digitalWrite(OUTPUT_PIN, !aktualniNastaveni.input);
-    } else if (stableDutyCyclePromile < 10 * aktualniNastaveni.spodni_hranice) {
+    } else if (mereni.dutyCyclePromile < 10 * aktualniNastaveni.spodni_hranice) {
       digitalWrite(OUTPUT_PIN, aktualniNastaveni.input);
     }
     
     // here is added evaluation whether everything is within the correct limits
-    normalizovanaStridaPromile = stableDutyCyclePromile;
-    if (stableDutyCyclePromile > 500){
-      normalizovanaStridaPromile = 1000 - stableDutyCyclePromile;
+    mereni.normalizedDutyCycle = mereni.dutyCyclePromile;
+    if (mereni.dutyCyclePromile > 500){
+      mereni.normalizedDutyCycle = 1000 - mereni.dutyCyclePromile;
     }
     
     // Test duty cycle tolerance
-    if (normalizovanaStridaPromile < aktualniNastaveni.min_strida || normalizovanaStridaPromile > aktualniNastaveni.max_strida ){
-      if (pocetChybStridy==0){
-        zacatekChyby=millis();
+    if (mereni.normalizedDutyCycle < aktualniNastaveni.min_strida || mereni.normalizedDutyCycle > aktualniNastaveni.max_strida ){
+      if (control.dutyCycleErrorCount==0){
+        control.startErrorTime=millis();
       }
-      pocetChybStridy+=1;
-      if (pocetChybStridy > aktualniNastaveni.max_error && aktualniNastaveni.max_error != ERROR_OFF){
-        Serial.print(F("Signal duty cycle is outside tolerance.  ")); Serial.print(stableDutyCyclePromile/10.0); Serial.println(F(" %"));
+      control.dutyCycleErrorCount+=1;
+      if (control.dutyCycleErrorCount > aktualniNastaveni.max_error && aktualniNastaveni.max_error != control.ERROR_OFF){
+        Serial.print(F("Signal duty cycle is outside tolerance.  ")); Serial.print(mereni.dutyCyclePromile/10.0); Serial.println(F(" %"));
         digitalWrite(ERROR_PIN, HIGH);
       }
     } else{
-      pocetChybStridy=0;
+      control.dutyCycleErrorCount=0;
     }
     
     // Test period tolerance
-    if (stablePeriod < aktualniNastaveni.min_perioda || stablePeriod > aktualniNastaveni.max_perioda ){
-      if (pocetChybPeriody == 0){
-        zacatekChyby=millis();
+    if (mereni.period_us < aktualniNastaveni.min_perioda || mereni.period_us > aktualniNastaveni.max_perioda ){
+      if (control.periodErrorCount == 0){
+        control.startErrorTime=millis();
       }
-      pocetChybPeriody+=1;
-      if (pocetChybPeriody > aktualniNastaveni.max_error && aktualniNastaveni.max_error != ERROR_OFF){
-        Serial.print(F("Signal period is outside tolerance.  ")); Serial.print(stablePeriod); Serial.println(F(" us"));
+      control.periodErrorCount+=1;
+      if (control.periodErrorCount > aktualniNastaveni.max_error && aktualniNastaveni.max_error != control.ERROR_OFF){
+        Serial.print(F("Signal period is outside tolerance.  ")); Serial.print(mereni.period_us); Serial.println(F(" us"));
         digitalWrite(ERROR_PIN, HIGH);
       }
     } else{
-      pocetChybPeriody=0;
+      control.periodErrorCount=0;
     }
 
     // Test whether an error occurred
-    if (pocetChybStridy == 0 && pocetChybPeriody == 0 && digitalRead(ERROR_PIN)==HIGH){
-      if (millis()-zacatekChyby > aktualniNastaveni.t_error){
+    if (control.dutyCycleErrorCount == 0 && control.periodErrorCount == 0 && digitalRead(ERROR_PIN)==HIGH){
+      if (millis()-control.startErrorTime > aktualniNastaveni.t_error){
         digitalWrite(ERROR_PIN, LOW);
       }
     }
 
     if (aktualniNastaveni.listing){
-      float frequencyHz = 1000000.0 / stablePeriod;
-      Serial.print(F("Frequency: ")); Serial.print(frequencyHz); Serial.print(F(" Hz | Duty Cycle: ")); Serial.print(stableDutyCyclePromile/10.0); Serial.println(F(" %"));
+      float frequencyHz = 1000000.0 / mereni.period_us;
+      Serial.print(F("Frequency: ")); Serial.print(frequencyHz); Serial.print(F(" Hz | Duty Cycle: ")); Serial.print(mereni.dutyCyclePromile/10.0); Serial.println(F(" %"));
       delay(200);
     }
-  } //konec testuj
+  } //konec control.evaluateMeasurement
 
-  if (millis()-casPoslednihoOdmeru>casVypadku){
+  if (millis()-control.lastMeasurementTime>control.signalTimeout_ms){
     // watchdog
-    stablePeriod=0;
-    stableDutyCyclePromile=0;
-    impuls=0;
-    testuj=true;
-    casPoslednihoOdmeru=millis();
-  } // if (millis()-casPoslednihoOdmeru>casVypadku)
+    mereni.period_us=0;
+    mereni.dutyCyclePromile=0;
+    mereni.pulseLength_us=0;
+    control.evaluateMeasurement=true;
+    control.lastMeasurementTime=millis();
+  } // if (millis()-control.lastMeasurementTime>control.signalTimeout_ms)
 
   // === PART 2: Serial Communication Detection and Command Processing (C-string) ===
   while (Serial.available() > 0) {
-    inChar = Serial.read();
+    mSerial.inChar = Serial.read();
 
-    if (inChar == '\n' || inChar == '\r') {
-      if (bufferIndex > 0) { // Zpracovat prikaz, pokud neco prislo
-        if (incomingBuffer[bufferIndex-1] ==' ') bufferIndex--; // odstrani mezeru na konci pokud by tam byla
-        incomingBuffer[bufferIndex] = '\0'; // Ukoncovaci znak
-        newData = true;
+    if (mSerial.inChar == '\n' || mSerial.inChar == '\r') {
+      if (mSerial.index > 0) { // Zpracovat prikaz, pokud neco prislo
+        if (mSerial.buffer[mSerial.index-1] ==' ') mSerial.index--; // odstrani mezeru na konci pokud by tam byla
+        mSerial.buffer[mSerial.index] = '\0'; // Ukoncovaci znak
+        mSerial.isNewData = true;
         break; 
       }
-    } else if (bufferIndex < MAX_COMMAND_LENGTH - 1) {
+    } else if (mSerial.index < MAX_COMMAND_LENGTH - 1) {
       // Prida jen znaky a ignorujeme whitespace
-      if (bufferIndex > 0 || inChar != ' ') {
-        if (incomingBuffer[bufferIndex-1] !=' ' || inChar != ' '){
+      if (mSerial.index > 0 || mSerial.inChar != ' ') {
+        if (mSerial.buffer[mSerial.index-1] !=' ' || mSerial.inChar != ' '){
           
-          inChar = tolower(inChar);
-          incomingBuffer[bufferIndex++] = inChar;
+          //mSerial.inChar = tolower(mSerial.inChar);
+          mSerial.buffer[mSerial.index++] = tolower(mSerial.inChar);
         } 
       }
     }
   } //while (Serial.available() > 0) 
 
-  if (newData) {
-    cmd = incomingBuffer;
-    precteno = 0; 
-    while (precteno!=255){
-      if (strcmp(cmd, "-h") == 0) {
+  if (mSerial.isNewData) {
+    mSerial.cmdPtr = mSerial.buffer;
+    mSerial.state = 0; 
+    while (mSerial.state!=255){
+      if (strcmp(mSerial.cmdPtr, "-h") == 0) {
         tiskniProgmem(TEXT_T);
         tiskniProgmem(TEXT_I);
         tiskniProgmem(TEXT_P);
@@ -430,144 +452,142 @@ void loop() {
         tiskniProgmem(TEXT_PWID);
         tiskniProgmem(TEXT_PER);
         
-        precteno = 255; //ukonci dekodovani incomingBufferu
+        mSerial.state = 255; //ukonci dekodovani mSerial.bufferu
       } 
-      if (strncmp(cmd, "*idn?", 5) == 0){
+      if (strncmp(mSerial.cmdPtr, "*idn?", 5) == 0){
         //*IDN?
         Serial.print(reinterpret_cast<const __FlashStringHelper *>(TEXT_IDN)); Serial.print(F(" Version: ")); Serial.println(aktualniNastaveni.verze);
-        precteno = 255; //ukonci dekodovani incomingBufferu
+        mSerial.state = 255; //ukonci dekodovani mSerial.bufferu
       }
-      if (strncmp(cmd, "*rst", 4) == 0){
+      if (strncmp(mSerial.cmdPtr, "*rst", 4) == 0){
         //*RST
         Serial.print(reinterpret_cast<const __FlashStringHelper *>(TEXT_RST)); Serial.print(F(" Version: ")); Serial.println(aktualniNastaveni.verze);
         tovarniNastaveni();
         zobrazNastaveni();
-        precteno = 255; //ukonci dekodovani incomingBufferu
+        mSerial.state = 255; //ukonci dekodovani mSerial.bufferu
       }
-      if (strncmp(cmd, ":fetch?", 7) == 0 ){
+      if (strncmp(mSerial.cmdPtr, ":fetch?", 7) == 0 ){
         //:FETCh?
-        if(precteno==2 || precteno==3){ Serial.print(aktualniNastaveni.columnsSeparator);Serial.print(' ');}
-        Serial.print(stableDutyCyclePromile);
-        if (strlen(cmd) > 8) { cmd += 8; precteno = 2;}
-        else precteno = 4;
+        if(mSerial.state==2 || mSerial.state==3){ Serial.print(aktualniNastaveni.columnsSeparator);Serial.print(' ');}
+        Serial.print(mereni.dutyCyclePromile);
+        if (strlen(mSerial.cmdPtr) > 8) { mSerial.cmdPtr += 8; mSerial.state = 2;}
+        else mSerial.state = 4;
       }
-      if (strncmp(cmd, ":fetc?", 6) == 0 ){
+      if (strncmp(mSerial.cmdPtr, ":fetc?", 6) == 0 ){
         //:FETCh?
-        if(precteno==2 || precteno==3){ Serial.print(aktualniNastaveni.columnsSeparator);Serial.print(' ');}
-        Serial.print(stableDutyCyclePromile);
-        if (strlen(cmd) > 7) { cmd += 7; precteno = 2;}
-        else precteno = 4;
+        if(mSerial.state==2 || mSerial.state==3){ Serial.print(aktualniNastaveni.columnsSeparator);Serial.print(' ');}
+        Serial.print(mereni.dutyCyclePromile);
+        if (strlen(mSerial.cmdPtr) > 7) { mSerial.cmdPtr += 7; mSerial.state = 2;}
+        else mSerial.state = 4;
       }
-      if (strncmp(cmd, ":measure:pwidth?",16) == 0 ){
+      if (strncmp(mSerial.cmdPtr, ":measure:pwidth?",16) == 0 ){
         //:MEASure:PWIDth?
-        pwid = (float)impuls / 1000000.0;
-        if(precteno==2 || precteno==3){Serial.print(aktualniNastaveni.columnsSeparator);Serial.print(' ');}
-        tiskniFloat(pwid,6,aktualniNastaveni.decimalSeparator);
-        if (strlen(cmd) > 17) {cmd += 17; precteno = 2;}
-        else precteno = 4;
+        if(mSerial.state==2 || mSerial.state==3){Serial.print(aktualniNastaveni.columnsSeparator);Serial.print(' ');}
+        tiskniFloat(mereni.pulseLength_us / 1000000.0,6,aktualniNastaveni.decimalSeparator);
+        if (strlen(mSerial.cmdPtr) > 17) {mSerial.cmdPtr += 17; mSerial.state = 2;}
+        else mSerial.state = 4;
       }
-      if (strncmp(cmd, ":meas:pwid?", 11) == 0 ){
+      if (strncmp(mSerial.cmdPtr, ":meas:pwid?", 11) == 0 ){
         //:MEASure:PWIDth?
-        pwid = (float)impuls / 1000000.0;
-        if(precteno==2 || precteno==3){Serial.print(aktualniNastaveni.columnsSeparator);Serial.print(' ');}
-        tiskniFloat(pwid,6,aktualniNastaveni.decimalSeparator);
-        if (strlen(cmd) > 12) {cmd += 12; precteno = 2;}
-        else precteno = 4;
+        if(mSerial.state==2 || mSerial.state==3){Serial.print(aktualniNastaveni.columnsSeparator);Serial.print(' ');}
+        tiskniFloat(mereni.pulseLength_us / 1000000.0,6,aktualniNastaveni.decimalSeparator);
+        if (strlen(mSerial.cmdPtr) > 12) {mSerial.cmdPtr += 12; mSerial.state = 2;}
+        else mSerial.state = 4;
       }
-      if (strncmp(cmd, ":measure:period?", 16) == 0 ){
+      if (strncmp(mSerial.cmdPtr, ":measure:period?", 16) == 0 ){
         //MEASure:PERiod?
-        if(precteno==2 || precteno==3){Serial.print(aktualniNastaveni.columnsSeparator);Serial.print(' ');}
-        tiskniFloat(stablePeriod / 1000000.0,6,aktualniNastaveni.decimalSeparator);
-        if (strlen(cmd) > 17) {cmd += 17; precteno = 2;}
-        else precteno = 4;
+        if(mSerial.state==2 || mSerial.state==3){Serial.print(aktualniNastaveni.columnsSeparator);Serial.print(' ');}
+        tiskniFloat(mereni.period_us / 1000000.0,6,aktualniNastaveni.decimalSeparator);
+        if (strlen(mSerial.cmdPtr) > 17) {mSerial.cmdPtr += 17; mSerial.state = 2;}
+        else mSerial.state = 4;
       }
-      if (strncmp(cmd, ":meas:per?", 10) == 0 ){
+      if (strncmp(mSerial.cmdPtr, ":meas:per?", 10) == 0 ){
         //MEASure:PERiod?
-        if(precteno==2 || precteno==3){Serial.print(aktualniNastaveni.columnsSeparator);Serial.print(' ');}
-        tiskniFloat(stablePeriod / 1000000.0,6,aktualniNastaveni.decimalSeparator);
-        if (strlen(cmd) > 11) {cmd += 11; precteno = 2;}
-        else precteno = 4;
+        if(mSerial.state==2 || mSerial.state==3){Serial.print(aktualniNastaveni.columnsSeparator);Serial.print(' ');}
+        tiskniFloat(mereni.period_us / 1000000.0,6,aktualniNastaveni.decimalSeparator);
+        if (strlen(mSerial.cmdPtr) > 11) {mSerial.cmdPtr += 11; mSerial.state = 2;}
+        else mSerial.state = 4;
       }
-      if (strncmp(cmd, "-te", 3) == 0) {
-        if (! zpracujUniverzalniPrikaz(cmd, 100, 65000, nullptr, nullptr, &aktualniNastaveni.t_error,  nullptr)){
+      if (strncmp(mSerial.cmdPtr, "-te", 3) == 0) {
+        if (! zpracujUniverzalniPrikaz(mSerial.cmdPtr, 100, 65000, nullptr, nullptr, &aktualniNastaveni.t_error,  nullptr)){
           tiskniProgmem(TEXT_TE);
-        }; precteno = 255; //ukonci dekodovani incomingBufferu
+        }; mSerial.state = 255; //ukonci dekodovani mSerial.bufferu
       } 
-      if (strncmp(cmd, "-t ", 3) == 0) {
-        if (! zpracujUniverzalniPrikaz(cmd, 1, 99, &aktualniNastaveni.spodni_hranice, &aktualniNastaveni.horni_hranice)){
+      if (strncmp(mSerial.cmdPtr, "-t ", 3) == 0) {
+        if (! zpracujUniverzalniPrikaz(mSerial.cmdPtr, 1, 99, &aktualniNastaveni.spodni_hranice, &aktualniNastaveni.horni_hranice)){
           tiskniProgmem(TEXT_T);
-        }; precteno = 255; //ukonci dekodovani incomingBufferu
+        }; mSerial.state = 255; //ukonci dekodovani mSerial.bufferu
       } 
-      if (strncmp(cmd, "-i", 2) == 0) {
-        if (! zpracujUniverzalniPrikaz(cmd, 0, 1, &aktualniNastaveni.input, nullptr, nullptr, nullptr)){
+      if (strncmp(mSerial.cmdPtr, "-i", 2) == 0) {
+        if (! zpracujUniverzalniPrikaz(mSerial.cmdPtr, 0, 1, &aktualniNastaveni.input, nullptr, nullptr, nullptr)){
           tiskniProgmem(TEXT_I);
-        }; precteno = 255; //ukonci dekodovani incomingBufferu
+        }; mSerial.state = 255; //ukonci dekodovani mSerial.bufferu
       } 
-      if (strncmp(cmd, "-l", 2) == 0) {
-        if (! zpracujUniverzalniPrikaz(cmd, 0, 1, &aktualniNastaveni.listing, nullptr, nullptr, nullptr)){
+      if (strncmp(mSerial.cmdPtr, "-l", 2) == 0) {
+        if (! zpracujUniverzalniPrikaz(mSerial.cmdPtr, 0, 1, &aktualniNastaveni.listing, nullptr, nullptr, nullptr)){
           tiskniProgmem(TEXT_L);
-        }; precteno = 255; //ukonci dekodovani incomingBufferu
+        }; mSerial.state = 255; //ukonci dekodovani mSerial.bufferu
       }
-      if (strncmp(cmd, "-p", 2) == 0) {
-        if (! zpracujUniverzalniPrikaz(cmd, 100, 65000, nullptr, nullptr, &aktualniNastaveni.min_perioda, &aktualniNastaveni.max_perioda)){
+      if (strncmp(mSerial.cmdPtr, "-p", 2) == 0) {
+        if (! zpracujUniverzalniPrikaz(mSerial.cmdPtr, 100, 65000, nullptr, nullptr, &aktualniNastaveni.min_perioda, &aktualniNastaveni.max_perioda)){
           tiskniProgmem(TEXT_P);
-        }; precteno = 255; //ukonci dekodovani incomingBufferu
+        }; mSerial.state = 255; //ukonci dekodovani mSerial.bufferu
       } 
-      if (strncmp(cmd, "-s", 2) == 0) {
-        if (! zpracujUniverzalniPrikaz(cmd, 1, 499, nullptr, nullptr, &aktualniNastaveni.min_strida, &aktualniNastaveni.max_strida)){
+      if (strncmp(mSerial.cmdPtr, "-s", 2) == 0) {
+        if (! zpracujUniverzalniPrikaz(mSerial.cmdPtr, 1, 499, nullptr, nullptr, &aktualniNastaveni.min_strida, &aktualniNastaveni.max_strida)){
           tiskniProgmem(TEXT_S);
-        }; precteno = 255; //ukonci dekodovani incomingBufferu
+        }; mSerial.state = 255; //ukonci dekodovani mSerial.bufferu
       } 
-      if (strncmp(cmd, "-e", 2) == 0) {
-        if (! zpracujUniverzalniPrikaz(cmd, 0, 255, &aktualniNastaveni.max_error, nullptr, nullptr, nullptr)){
+      if (strncmp(mSerial.cmdPtr, "-e", 2) == 0) {
+        if (! zpracujUniverzalniPrikaz(mSerial.cmdPtr, 0, 255, &aktualniNastaveni.max_error, nullptr, nullptr, nullptr)){
           tiskniProgmem(TEXT_E);
-        }; precteno = 255; //ukonci dekodovani incomingBufferu
+        }; mSerial.state = 255; //ukonci dekodovani mSerial.bufferu
       } 
-      if (strncmp(cmd, "-b", 2) == 0) {
-        if (! zpracujUniverzalniPrikaz(cmd, 96, 1152, nullptr, nullptr, &aktualniNastaveni.bps,  nullptr)){
+      if (strncmp(mSerial.cmdPtr, "-b", 2) == 0) {
+        if (! zpracujUniverzalniPrikaz(mSerial.cmdPtr, 96, 1152, nullptr, nullptr, &aktualniNastaveni.bps,  nullptr)){
           tiskniProgmem(TEXT_BPS);
-        }; precteno = 255; //ukonci dekodovani incomingBufferu
+        }; mSerial.state = 255; //ukonci dekodovani mSerial.bufferu
       } 
-      if (strncmp(cmd, "-ds", 3) == 0) {
-        if(strlen(cmd) == 5) {
-          char znak = cmd[4];
+      if (strncmp(mSerial.cmdPtr, "-ds", 3) == 0) {
+        if(strlen(mSerial.cmdPtr) == 5) {
+          char znak = mSerial.cmdPtr[4];
           aktualniNastaveni.decimalSeparator=znak;
           EEPROM.put(EEPROM_ADRESA, aktualniNastaveni);
           Serial.println(F("\r\nLimits successfully updated:"));
           zobrazNastaveni();
-          precteno = 255; //ukonci dekodovani incomingBufferu
+          mSerial.state = 255; //ukonci dekodovani mSerial.bufferu
         }
       } 
 
-      if (strncmp(cmd, "-cs", 3) == 0) {
-        if(strlen(cmd) == 5) {
-          char znak = cmd[4];
+      if (strncmp(mSerial.cmdPtr, "-cs", 3) == 0) {
+        if(strlen(mSerial.cmdPtr) == 5) {
+          char znak = mSerial.cmdPtr[4];
           aktualniNastaveni.columnsSeparator=znak;
           EEPROM.put(EEPROM_ADRESA, aktualniNastaveni);
           Serial.println(F("\r\nLimits successfully updated:"));
           zobrazNastaveni();
-          precteno = 255; //ukonci dekodovani incomingBufferu
+          mSerial.state = 255; //ukonci dekodovani mSerial.bufferu
         }
       }
       
-      if (precteno==4){
+      if (mSerial.state==4){
         // prida konec radku za posledni odmer
         Serial.print(F("\r\n"));
-        precteno=255; //ukonci dekodovani incomingBufferu
+        mSerial.state=255; //ukonci dekodovani mSerial.bufferu
       }
-      if (precteno==0 || precteno==3 ){
+      if (mSerial.state==0 || mSerial.state==3 ){
         Serial.print(F("\r\nUnknown command or wrong format: "));
-        Serial.println(cmd);
+        Serial.println(mSerial.cmdPtr);
         tiskniProgmem(TEXT_H);
-        precteno=255; //ukonci dekodovani incomingBufferu
+        mSerial.state=255; //ukonci dekodovani mSerial.bufferu
       }
-      if (precteno == 2) precteno=3;
+      if (mSerial.state == 2) mSerial.state=3;
 
-    } //while (precteno!=255)
+    } //while (mSerial.state!=255)
    
-    bufferIndex = 0; // Reset index pro dalsi prikaz
-    newData = false;
-  } //if (newData)
+    mSerial.index = 0; // Reset index pro dalsi prikaz
+    mSerial.isNewData = false;
+  } //if (mSerial.isNewData)
 
   #ifdef DEBUG_MODE
     delay(100);

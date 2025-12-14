@@ -393,15 +393,19 @@ void loop() {
 
     if (inChar == '\n' || inChar == '\r') {
       if (bufferIndex > 0) { // Zpracovat prikaz, pokud neco prislo
+        if (incomingBuffer[bufferIndex-1] ==' ') bufferIndex--; // odstrani mezeru na konci pokud by tam byla
         incomingBuffer[bufferIndex] = '\0'; // Ukoncovaci znak
         newData = true;
         break; 
       }
     } else if (bufferIndex < MAX_COMMAND_LENGTH - 1) {
-      // Pridame jen znaky a ignorujeme whitespace na zacatku
+      // Prida jen znaky a ignorujeme whitespace
       if (bufferIndex > 0 || inChar != ' ') {
-        inChar = tolower(inChar);
-        incomingBuffer[bufferIndex++] = inChar;
+        if (incomingBuffer[bufferIndex-1] !=' ' || inChar != ' '){
+          
+          inChar = tolower(inChar);
+          incomingBuffer[bufferIndex++] = inChar;
+        } 
       }
     }
   } //while (Serial.available() > 0) 

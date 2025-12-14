@@ -1,8 +1,8 @@
 /*
  * PWM Detector for ARDUINO NANO
  * Description: Reads PWM from pin 2 and controls an LED on pin 12, or pin 6 based on error evaluation.
- * Includes serial communication handling with commands -h -t -i -p -s -e -te -b -l including range validation.
- * Date: 10.12.2025
+ * Includes serial communication handling with commands -h -t -i -p -s -e -te -b -l -ds -cs including range validation.
+ * Date: 14.12.2025
  * Author: Jaroslav Machacek
  *
  * OPTIMALIZACE: Textove konstanty presunuty do PROGMEM (F() a const char PROGMEM)
@@ -31,8 +31,9 @@ const byte INPUT_PIN = 2;
 const byte OUTPUT_PIN = 12;
 const byte ERROR_PIN = 6;
 
-
+//------------------------------------------------------------------------------
 // --- TEXTY PRESUNUTY DO PROGMEM (USPORA SRAM) ---
+//------------------------------------------------------------------------------
 const char TEXT_T[] PROGMEM = "-t [number1] [number2] to set duty cycle limits in % for flipping (1-99) pin12.";
 const char TEXT_I[] PROGMEM = "-i [number] 0/1 - no/yes invert output.";
 const char TEXT_P[] PROGMEM = "-p [number1] [number2] to set limits for correct period in us (100-65000).";
@@ -50,9 +51,9 @@ const char TEXT_RST[] PROGMEM = "*RST sets all parameters to factory settings.";
 const char TEXT_FETC[] PROGMEM = ":FETCh? returns the duty cycle values of the PWM signal in per mille.";
 const char TEXT_PWID[] PROGMEM = ":MEASure:PWIDth? returns the length value of the HIGH signal.";
 const char TEXT_PER[] PROGMEM = ":MEASure:PERiod? returns the signal period value.";
+const char TEXT_EXAMPLE[] PROGMEM = "Example of a measurement command: :MEAS:PWID? :MEAS:PER?   answer e.g.: 0,006312; 0,020076";
 
 const char TEXT_IDN[] PROGMEM = "Arduino NANO for measuring PWM signal duty cycle.";
-
 
 const size_t MAX_COMMAND_LENGTH = 60; // Max. delka prikazu pro char buffer
 const size_t EEPROM_ADRESA = 0;       // 
@@ -178,11 +179,8 @@ void handlePinChange() {
     pinState = false;
   }
 }
+
 //------------------------------------------------------------------------------
-
-
-
-
 // Pomocna funkce pro tisk retezců z PROGMEM
 void tiskniProgmem(const char *str) {
   Serial.print(F("Command: "));
@@ -224,31 +222,6 @@ void tovarniNastaveni(){
   
     EEPROM.put(EEPROM_ADRESA, aktualniNastaveni);
 } //void tovarniNastaveni
-
-void setup() {
-  pinMode(INPUT_PIN, INPUT);
-  pinMode(OUTPUT_PIN, OUTPUT);
-  pinMode(ERROR_PIN, OUTPUT);
-  // We use CHANGE, so we react to both edges
-  attachInterrupt(digitalPinToInterrupt(INPUT_PIN), handlePinChange, CHANGE);
-
-  // Reading values from EEPROM
-  EEPROM.get(EEPROM_ADRESA, aktualniNastaveni);
-
-  // Test if there is unreasonable data in EEPROM, then set default values and write them to EEPROM
-  if (strcmp(aktualniNastaveni.verze, VERSION) != 0){
-    Serial.begin(9600); // Docasne
-    Serial.println(F("First run !!!!"));
-    tovarniNastaveni();
-  }
-  Serial.begin(aktualniNastaveni.bps * 100UL);
-  Serial.println(F("\r\n\r\nThe Arduino is ready to evaluate the rectangular signal on PIN 2. It will evaluate its period and duty cycle."));
-  Serial.println(F("Flipping PIN12 based on duty cycle and PIN6 based on error."));
-  zobrazNastaveni();
-  Serial.print(F("\r\n"));
-  tiskniProgmem(TEXT_H); 
-  control.lastMeasurementTime=millis();
-}
 
 // Funkce pro parsovani, validaci a ukladani (az) dvou hodnot nastaveni
 bool zpracujUniverzalniPrikaz(const char* command, unsigned int minValue, unsigned int maxValue, byte* lowPtr, byte* highPtr, unsigned int* uLowPtr = nullptr, unsigned int* uHighPtr = nullptr) {
@@ -333,6 +306,31 @@ void tiskniFloat(float cislo, int pocetDesetinychMist,  char separator) {
     }
     Serial.print(buffer);
 } // void tiskniFloat
+
+void setup() {
+  pinMode(INPUT_PIN, INPUT);
+  pinMode(OUTPUT_PIN, OUTPUT);
+  pinMode(ERROR_PIN, OUTPUT);
+  // We use CHANGE, so we react to both edges
+  attachInterrupt(digitalPinToInterrupt(INPUT_PIN), handlePinChange, CHANGE);
+
+  // Reading values from EEPROM
+  EEPROM.get(EEPROM_ADRESA, aktualniNastaveni);
+
+  // Test if there is unreasonable data in EEPROM, then set default values and write them to EEPROM
+  if (strcmp(aktualniNastaveni.verze, VERSION) != 0){
+    Serial.begin(9600); // Docasne
+    Serial.println(F("First run !!!!"));
+    tovarniNastaveni();
+  }
+  Serial.begin(aktualniNastaveni.bps * 100UL);
+  Serial.println(F("\r\n\r\nThe Arduino is ready to evaluate the rectangular signal on PIN 2. It will evaluate its period and duty cycle."));
+  Serial.println(F("Flipping PIN12 based on duty cycle and PIN6 based on error."));
+  zobrazNastaveni();
+  Serial.print(F("\r\n"));
+  tiskniProgmem(TEXT_H); 
+  control.lastMeasurementTime=millis();
+}
 
 void loop() {
   // === PART 1: PWM Signal Detection ===
@@ -452,7 +450,7 @@ void loop() {
         tiskniProgmem(TEXT_FETC);
         tiskniProgmem(TEXT_PWID);
         tiskniProgmem(TEXT_PER);
-        
+        Serial.print(reinterpret_cast<const __FlashStringHelper *>(TEXT_EXAMPLE));
         mSerial.state = 255; //ukonci dekodovani mSerial.bufferu
       } 
       if (strncmp(mSerial.cmdPtr, "*idn?", 5) == 0){

@@ -275,6 +275,7 @@ bool zpracujUniverzalniPrikaz(const char* command, unsigned int minValue, unsign
       if (nove_spodni == 96 || nove_spodni == 144 || nove_spodni == 192 || nove_spodni == 288 || nove_spodni == 384 || nove_spodni == 576 || nove_spodni == 1152 ){
         if (uLowPtr) *uLowPtr = (unsigned int)nove_spodni;
         EEPROM.put(EEPROM_ADRESA, aktualniNastaveni);
+        delay(10);
         Serial.println(F("\r\nLimits successfully updated:"));
         zobrazNastaveni();
         return true;

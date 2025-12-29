@@ -7,7 +7,7 @@
  *
  * OPTIMALIZACE: Textove konstanty presunuty do PROGMEM (F() a const char PROGMEM)
  * Nahrazena trida String za char[] pro seriovou linku.
- * pridany prikazy pro mereni *IDN?  :MEASure:PWIDth?  :FETCh? :MEASure:PERiod?
+ * pridany prikazy pro mereni *IDN?  :MEASure:WIDth?  :FETCh? :MEASure:PERiod?
  */
 
 #include <Arduino.h>
@@ -34,6 +34,7 @@ const byte ERROR_PIN = 6;
 //------------------------------------------------------------------------------
 // --- TEXTY PRESUNUTY DO PROGMEM (USPORA SRAM) ---
 //------------------------------------------------------------------------------
+const char TEXT_SHOW[] PROGMEM = "SHOW displays the current values ​​of all parameters.";
 const char TEXT_T[] PROGMEM = "-t [number1] [number2] to set duty cycle limits in % for flipping (1-99) pin12.";
 const char TEXT_I[] PROGMEM = "-i [number] 0/1 - no/yes invert output.";
 const char TEXT_P[] PROGMEM = "-p [number1] [number2] to set limits for correct period in us (100-65000).";
@@ -48,10 +49,12 @@ const char TEXT_H[] PROGMEM = "-h for help.\r\n";
 
 const char TEXT_HIDN[] PROGMEM = "*IDN? returns IDN";
 const char TEXT_RST[] PROGMEM = "*RST sets all parameters to factory settings.";
+const char TEXT_CLS[] PROGMEM = "*CLS clear error counter.";
 const char TEXT_FETC[] PROGMEM = ":FETCh? returns the duty cycle values of the PWM signal in per mille.";
-const char TEXT_PWID[] PROGMEM = ":MEASure:PWIDth? returns the length value of the HIGH signal.";
+const char TEXT_WID[] PROGMEM = ":MEASure:WIDth? returns the length value of the HIGH signal.";
 const char TEXT_PER[] PROGMEM = ":MEASure:PERiod? returns the signal period value.";
-const char TEXT_EXAMPLE[] PROGMEM = "Example of a measurement command: :MEAS:PWID? :MEAS:PER?   answer e.g.: 0,006312; 0,020076";
+const char TEXT_ECOUNT[] PROGMEM = "SYSTem:ERRor:COUNt? returns the number of errors since start or *CLS.";
+const char TEXT_EXAMPLE[] PROGMEM = "Example of a measurement command: :MEAS:WID? :MEAS:PER?   answer e.g.: 0,006312; 0,020076";
 
 const char TEXT_IDN[] PROGMEM = "Arduino NANO for measuring PWM signal duty cycle.";
 
@@ -85,6 +88,7 @@ struct ControlState {
     byte dutyCycleErrorCount = 0;               // pocitadlo kolikrat za sebou byla detekovana chyba stridy
     byte periodErrorCount = 0;                  // pocitadlo kolikrat za sebou byla detekovana chyba periody
     const byte ERROR_OFF = 255;                 // pokud je nastaveno pocet povolenych erroru na 255 tak se error nikdy nehlasi
+    unsigned long errorCount=0;                 // celkový počet erroru od startu nebo *CLS
 };
 // MojeNastaveni se uklada do EEPROM
 struct MojeNastaveni {
@@ -330,6 +334,7 @@ void setup() {
   Serial.print(F("\r\n"));
   tiskniProgmem(TEXT_H); 
   control.lastMeasurementTime=millis();
+  control.errorCount=0;
 }
 
 void loop() {
@@ -363,6 +368,7 @@ void loop() {
         control.startErrorTime=millis();
       }
       control.dutyCycleErrorCount+=1;
+      control.errorCount+=1;
       if (control.dutyCycleErrorCount > aktualniNastaveni.max_error && aktualniNastaveni.max_error != control.ERROR_OFF){
         Serial.print(F("Signal duty cycle is outside tolerance.  ")); Serial.print(mereni.dutyCyclePromile/10.0); Serial.println(F(" %"));
         digitalWrite(ERROR_PIN, HIGH);
@@ -377,6 +383,7 @@ void loop() {
         control.startErrorTime=millis();
       }
       control.periodErrorCount+=1;
+      control.errorCount+=1;
       if (control.periodErrorCount > aktualniNastaveni.max_error && aktualniNastaveni.max_error != control.ERROR_OFF){
         Serial.print(F("Signal period is outside tolerance.  ")); Serial.print(mereni.period_us); Serial.println(F(" us"));
         digitalWrite(ERROR_PIN, HIGH);
@@ -435,7 +442,8 @@ void loop() {
     mSerial.cmdPtr = mSerial.buffer;
     mSerial.state = 0; 
     while (mSerial.state!=255){
-      if (strcmp(mSerial.cmdPtr, "-h") == 0) {
+      if (strcmp(mSerial.cmdPtr, "-h") == 0 || strcmp(mSerial.cmdPtr, "?") == 0 || strcmp(mSerial.cmdPtr, "HELP") == 0) {
+        tiskniProgmem(TEXT_SHOW);
         tiskniProgmem(TEXT_T);
         tiskniProgmem(TEXT_I);
         tiskniProgmem(TEXT_P);
@@ -447,12 +455,20 @@ void loop() {
         tiskniProgmem(TEXT_DS);
         tiskniProgmem(TEXT_CS);
         tiskniProgmem(TEXT_HIDN);
+        tiskniProgmem(TEXT_RST);
+        tiskniProgmem(TEXT_CLS);
         tiskniProgmem(TEXT_FETC);
-        tiskniProgmem(TEXT_PWID);
+        tiskniProgmem(TEXT_WID);
         tiskniProgmem(TEXT_PER);
-        Serial.print(reinterpret_cast<const __FlashStringHelper *>(TEXT_EXAMPLE));
+        tiskniProgmem(TEXT_ECOUNT);
+        Serial.println(reinterpret_cast<const __FlashStringHelper *>(TEXT_EXAMPLE));
         mSerial.state = 255; //ukonci dekodovani mSerial.bufferu
       } 
+      if (strncmp(mSerial.cmdPtr, "show", 4) == 0){
+        //SHOW
+        zobrazNastaveni();
+        mSerial.state = 255; //ukonci dekodovani mSerial.bufferu
+      }
       if (strncmp(mSerial.cmdPtr, "*idn?", 5) == 0){
         //*IDN?
         Serial.print(reinterpret_cast<const __FlashStringHelper *>(TEXT_IDN)); Serial.print(F(" Version: ")); Serial.println(aktualniNastaveni.verze);
@@ -463,6 +479,12 @@ void loop() {
         Serial.print(reinterpret_cast<const __FlashStringHelper *>(TEXT_RST)); Serial.print(F(" Version: ")); Serial.println(aktualniNastaveni.verze);
         tovarniNastaveni();
         zobrazNastaveni();
+        control.errorCount=0;
+        mSerial.state = 255; //ukonci dekodovani mSerial.bufferu
+      }
+      if (strncmp(mSerial.cmdPtr, "*cls", 4) == 0){
+        //*CLS
+        control.errorCount=0;
         mSerial.state = 255; //ukonci dekodovani mSerial.bufferu
       }
       if (strncmp(mSerial.cmdPtr, ":fetch?", 7) == 0 ){
@@ -479,18 +501,18 @@ void loop() {
         if (strlen(mSerial.cmdPtr) > 7) { mSerial.cmdPtr += 7; mSerial.state = 2;}
         else mSerial.state = 4;
       }
-      if (strncmp(mSerial.cmdPtr, ":measure:pwidth?",16) == 0 ){
+      if (strncmp(mSerial.cmdPtr, ":measure:width?",15) == 0 ){
         //:MEASure:PWIDth?
         if(mSerial.state==2 || mSerial.state==3){Serial.print(aktualniNastaveni.columnsSeparator);Serial.print(' ');}
         tiskniFloat(mereni.pulseLength_us / 1000000.0,6,aktualniNastaveni.decimalSeparator);
-        if (strlen(mSerial.cmdPtr) > 17) {mSerial.cmdPtr += 17; mSerial.state = 2;}
+        if (strlen(mSerial.cmdPtr) > 16) {mSerial.cmdPtr += 16; mSerial.state = 2;}
         else mSerial.state = 4;
       }
-      if (strncmp(mSerial.cmdPtr, ":meas:pwid?", 11) == 0 ){
-        //:MEASure:PWIDth?
+      if (strncmp(mSerial.cmdPtr, ":meas:wid?", 10) == 0 ){
+        //:MEASure:WIDth?
         if(mSerial.state==2 || mSerial.state==3){Serial.print(aktualniNastaveni.columnsSeparator);Serial.print(' ');}
         tiskniFloat(mereni.pulseLength_us / 1000000.0,6,aktualniNastaveni.decimalSeparator);
-        if (strlen(mSerial.cmdPtr) > 12) {mSerial.cmdPtr += 12; mSerial.state = 2;}
+        if (strlen(mSerial.cmdPtr) > 11) {mSerial.cmdPtr += 11; mSerial.state = 2;}
         else mSerial.state = 4;
       }
       if (strncmp(mSerial.cmdPtr, ":measure:period?", 16) == 0 ){
@@ -505,6 +527,20 @@ void loop() {
         if(mSerial.state==2 || mSerial.state==3){Serial.print(aktualniNastaveni.columnsSeparator);Serial.print(' ');}
         tiskniFloat(mereni.period_us / 1000000.0,6,aktualniNastaveni.decimalSeparator);
         if (strlen(mSerial.cmdPtr) > 11) {mSerial.cmdPtr += 11; mSerial.state = 2;}
+        else mSerial.state = 4;
+      }
+      if (strncmp(mSerial.cmdPtr, "system:error:count?", 19) == 0 ){
+        //SYSTem:ERRor:COUNt?
+        if(mSerial.state==2 || mSerial.state==3){Serial.print(aktualniNastaveni.columnsSeparator);Serial.print(' ');}
+        Serial.print(control.errorCount);
+        if (strlen(mSerial.cmdPtr) > 20) {mSerial.cmdPtr += 20; mSerial.state = 2;}
+        else mSerial.state = 4;
+      }
+      if (strncmp(mSerial.cmdPtr, "syst:err:coun?", 14) == 0 ){
+        //SYSTem:ERRor:COUNt?
+        if(mSerial.state==2 || mSerial.state==3){Serial.print(aktualniNastaveni.columnsSeparator);Serial.print(' ');}
+        Serial.print(control.errorCount);
+        if (strlen(mSerial.cmdPtr) > 15) {mSerial.cmdPtr += 15; mSerial.state = 2;}
         else mSerial.state = 4;
       }
       if (strncmp(mSerial.cmdPtr, "-te", 3) == 0) {

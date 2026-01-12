@@ -105,7 +105,7 @@ struct MojeNastaveni {
   byte max_error;            // number of consecutive errors needed to flip the error pin
   unsigned int t_error;      // minimum error signaling duration ms
   unsigned int bps;          // Serial buat rate
-  byte listing;              // 0/1 - no/yes lists current values of frequency and duty cycle
+  byte listing;              // 0/1/2 - no/yes lists current values of frequency and duty cycle
   char decimalSeparator;
   char columnsSeparator;     //
   byte periodCount;          // how many periods must there be in order for the output to flip
@@ -208,7 +208,7 @@ void zobrazNastaveni() {
   Serial.print(F("Max number of errors -e: "));  Serial.println(aktualniNastaveni.max_error);
   Serial.print(F("Min error signaling duration -te: "));  Serial.print(aktualniNastaveni.t_error);  Serial.println(F(" ms"));
   Serial.print(F("Serial line speed -b: "));  Serial.print(aktualniNastaveni.bps);  Serial.println(F("00 baud"));
-  Serial.print(F("Listing of measured frequency and duty cycle values -l: "));  Serial.print(aktualniNastaveni.listing);  Serial.println(F(" [0-No; 1-Yes]"));
+  Serial.print(F("Listing of measured frequency and duty cycle values -l: "));  Serial.print(aktualniNastaveni.listing);  Serial.println(F(" [0-No; 1-Yes error; 2- Yes periodic]"));
   Serial.print(F("Decimal separator -ds: '"));  Serial.print(aktualniNastaveni.decimalSeparator);  Serial.println(F("'"));
   Serial.print(F("Columns separator -ct: '"));  Serial.print(aktualniNastaveni.columnsSeparator);  Serial.println(F("'"));
   
@@ -386,10 +386,12 @@ void loop() {
       }
       control.dutyCycleErrorCount += 1;
       control.errorCount += 1;
-      if (control.dutyCycleErrorCount > aktualniNastaveni.max_error && aktualniNastaveni.max_error != control.ERROR_OFF) {
-        Serial.print(F("Signal duty cycle is outside tolerance.  "));
-        Serial.print(mereni.dutyCyclePromile / 10.0);
-        Serial.println(F(" %"));
+      if (control.dutyCycleErrorCount > aktualniNastaveni.max_error && aktualniNastaveni.max_error != control.ERROR_OFF ) {
+        if (aktualniNastaveni.listing == 1){
+          Serial.print(F("Signal duty cycle is outside tolerance.  "));
+          Serial.print(mereni.dutyCyclePromile / 10.0);
+          Serial.println(F(" %"));
+        }
         digitalWrite(ERROR_PIN, HIGH);
       }
     } else {
@@ -403,10 +405,12 @@ void loop() {
       }
       control.periodErrorCount += 1;
       control.errorCount += 1;
-      if (control.periodErrorCount > aktualniNastaveni.max_error && aktualniNastaveni.max_error != control.ERROR_OFF) {
-        Serial.print(F("Signal period is outside tolerance.  "));
-        Serial.print(mereni.period_us);
-        Serial.println(F(" us"));
+      if (control.periodErrorCount > aktualniNastaveni.max_error && aktualniNastaveni.max_error != control.ERROR_OFF ) {
+        if (aktualniNastaveni.listing == 1){
+          Serial.print(F("Signal period is outside tolerance.  "));
+          Serial.print(mereni.period_us);
+          Serial.println(F(" us"));
+        }
         digitalWrite(ERROR_PIN, HIGH);
       }
     } else {
@@ -420,7 +424,7 @@ void loop() {
       }
     }
 
-    if (aktualniNastaveni.listing) {
+    if (aktualniNastaveni.listing == 2) {
       float frequencyHz = 1000000.0 / mereni.period_us;
       Serial.print(F("Frequency: "));
       Serial.print(frequencyHz);
@@ -638,7 +642,7 @@ void loop() {
         mSerial.state = 255;  //ukonci dekodovani mSerial.bufferu
       }
       if (strncmp(mSerial.cmdPtr, "-l", 2) == 0) {
-        if (!zpracujUniverzalniPrikaz(mSerial.cmdPtr, 0, 1, &aktualniNastaveni.listing, nullptr, nullptr, nullptr)) {
+        if (!zpracujUniverzalniPrikaz(mSerial.cmdPtr, 0, 2, &aktualniNastaveni.listing, nullptr, nullptr, nullptr)) {
           tiskniProgmem(TEXT_L);
         };
         mSerial.state = 255;  //ukonci dekodovani mSerial.bufferu

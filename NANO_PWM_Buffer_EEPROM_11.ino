@@ -27,8 +27,8 @@ const size_t VERSION_SIZE = sizeof(VERSION);
 //------------------------------------------------------------------------------
 // --- DEFINICE PINU
 //------------------------------------------------------------------------------
-const byte INPUT_PIN = 2;
-const byte OUTPUT_PIN = 12;   // pozor v přerušení se přistupuje k pinu přímo ne přes diritalWrite
+const byte INPUT_PIN = 2;     // pozor v přerušení se přistupuje kvůli rychlosti k pinu přímo ne přes diritalRead
+const byte OUTPUT_PIN = 12;   // pozor v přerušení se přistupuje kvůli rychlosti k pinu přímo ne přes diritalWrite
 const byte ERROR_PIN = 6;
 
 //------------------------------------------------------------------------------
@@ -94,8 +94,8 @@ struct ControlState {
 // MojeNastaveni se uklada do EEPROM
 struct MojeNastaveni {
   char verze[VERSION_SIZE];  // verze napr V01.0
-  unsigned int spodni_hranice;       // in % when it should switch to LOW
-  unsigned int horni_hranice;        // in % when it should switch to HIGH
+  unsigned int spodni_hranice;       // in microseconds when it should switch to LOW
+  unsigned int horni_hranice;        // in microseconds when it should switch to HIGH
   byte input;                // typ LOW/HIGH
   unsigned int min_perioda;  // time in us
   unsigned int max_perioda;  // time in us
@@ -106,7 +106,7 @@ struct MojeNastaveni {
   unsigned int bps;          // Serial buat rate
   byte listing;              // 0/1/2 - no/yes lists current values of frequency and duty cycle
   char decimalSeparator;
-  char columnsSeparator;     //
+  char columnsSeparator;     
 };
 
 //------------------------------------------------------------------------------

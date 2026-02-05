@@ -18,7 +18,7 @@
 //-------------------------------------
 // definice verze
 //-------------------------------------
-#define VERSION "V1.3"
+#define VERSION "V1.4"
 const size_t VERSION_SIZE = sizeof(VERSION);
 
 // If you uncomment the following line, you will activate debug mode
@@ -35,9 +35,9 @@ const byte ERROR_PIN = 6;
 // --- TEXTY PRESUNUTY DO PROGMEM (USPORA SRAM) ---
 //------------------------------------------------------------------------------
 const char TEXT_SHOW[] PROGMEM = "SHOW displays the current values ​​of all parameters.";
-const char TEXT_T[] PROGMEM = "-t [number1] [number2] to set duty cycle limits in % for flipping (1-99) pin12.";
+const char TEXT_T[] PROGMEM = "-t [number1] [number2] setting limits for pulse switching in us (500-20000) pin12.";
 const char TEXT_I[] PROGMEM = "-i [number] 0/1 - no/yes invert output.";
-const char TEXT_N[] PROGMEM = "-n [number] to set the number of consecutive period before the state pin 12 flips.";
+//const char TEXT_N[] PROGMEM = "-n [number] to set the number of consecutive period before the state pin 12 flips.";
 const char TEXT_P[] PROGMEM = "-p [number1] [number2] to set limits for correct period in us (100-65000).";
 const char TEXT_S[] PROGMEM = "-s [number1] [number2] to set limits for correct duty cycle in permille (1-499).";
 const char TEXT_E[] PROGMEM = "-e [number] to set the number of consecutive errors before the error pin (0-255) pin6 flips.";
@@ -95,8 +95,8 @@ struct ControlState {
 // MojeNastaveni se uklada do EEPROM
 struct MojeNastaveni {
   char verze[VERSION_SIZE];  // verze napr V01.0
-  byte spodni_hranice;       // in % when it should switch to LOW
-  byte horni_hranice;        // in % when it should switch to HIGH
+  unsigned int spodni_hranice;       // in % when it should switch to LOW
+  unsigned int horni_hranice;        // in % when it should switch to HIGH
   byte input;                // typ LOW/HIGH
   unsigned int min_perioda;  // time in us
   unsigned int max_perioda;  // time in us
@@ -108,7 +108,7 @@ struct MojeNastaveni {
   byte listing;              // 0/1/2 - no/yes lists current values of frequency and duty cycle
   char decimalSeparator;
   char columnsSeparator;     //
-  byte periodCount;          // how many periods must there be in order for the output to flip
+  //byte periodCount;          // how many periods must there be in order for the output to flip
 };
 
 //------------------------------------------------------------------------------
@@ -174,12 +174,12 @@ void handlePinChange() {
     // --- Právě skončil LOW segment (optočlen přestal vést) ---
     // TADY JE TVÁ PRIORITA: PŘEPNUTÍ PINU 12
     
-    if (duration > 12000) {
+    if (duration > aktualniNastaveni.horni_hranice) {
       // Případ > 12ms: PIN 12 = !input
       if (aktualniNastaveni.input) PORTB &= ~(1 << PB4); 
       else PORTB |= (1 << PB4);
     } 
-    else if (duration < 8000) {
+    else if (duration < aktualniNastaveni.spodni_hranice) {
       // Případ 1ms až 8ms: PIN 12 = input
       if (aktualniNastaveni.input) PORTB |= (1 << PB4); 
       else PORTB &= ~(1 << PB4);
@@ -211,8 +211,8 @@ void tiskniProgmem(const char *str) {
 void zobrazNastaveni() {
   Serial.print(F("Version: "));
   Serial.println(aktualniNastaveni.verze);
-  Serial.print(F("Threshold LOW -t: "));  Serial.print(aktualniNastaveni.spodni_hranice);  Serial.println(F("%"));
-  Serial.print(F("Threshold HIGH -t: "));  Serial.print(aktualniNastaveni.horni_hranice);  Serial.println(F("%"));
+  Serial.print(F("Threshold LOW -t: "));  Serial.print(aktualniNastaveni.spodni_hranice);  Serial.println(F(" us"));
+  Serial.print(F("Threshold HIGH -t: "));  Serial.print(aktualniNastaveni.horni_hranice);  Serial.println(F(" us"));
   Serial.print(F("Invert output -i: "));  Serial.println(aktualniNastaveni.input);
   //Serial.print(F("Number of periods -n: "));  Serial.println(aktualniNastaveni.periodCount);  
   Serial.print(F("Min period -p: "));  Serial.print(aktualniNastaveni.min_perioda);  Serial.println(F(" us"));
@@ -231,8 +231,8 @@ void zobrazNastaveni() {
 
 void tovarniNastaveni() {
   strncpy(aktualniNastaveni.verze, VERSION, VERSION_SIZE);
-  aktualniNastaveni.spodni_hranice = 40;
-  aktualniNastaveni.horni_hranice = 60;
+  aktualniNastaveni.spodni_hranice = 8000;
+  aktualniNastaveni.horni_hranice = 12000;
   aktualniNastaveni.input = 0;
   aktualniNastaveni.min_perioda = 18000;
   aktualniNastaveni.max_perioda = 22000;
@@ -244,8 +244,7 @@ void tovarniNastaveni() {
   aktualniNastaveni.listing = 0;
   aktualniNastaveni.decimalSeparator = ',';
   aktualniNastaveni.columnsSeparator = ';';
-  //aktualniNastaveni.periodCount = 1;
-
+ 
   EEPROM.put(EEPROM_ADRESA, aktualniNastaveni);
 }  //void tovarniNastaveni
 
@@ -303,7 +302,7 @@ bool zpracujUniverzalniPrikaz(const char *command, unsigned int minValue, unsign
     return true;
 
   } else {
-error_range:  // Cil skoku pro chybovou zpravu
+  error_range:  // Cil skoku pro chybovou zpravu
     // Hodnota je mimo rozsah nebo nespravny format
     Serial.print(F("\r\nError: Values must be in the range ("));
     Serial.print(minValue);
@@ -474,7 +473,7 @@ void loop() {
         tiskniProgmem(TEXT_SHOW);
         tiskniProgmem(TEXT_T);
         tiskniProgmem(TEXT_I);
-        tiskniProgmem(TEXT_N);
+        //tiskniProgmem(TEXT_N);
         tiskniProgmem(TEXT_P);
         tiskniProgmem(TEXT_S);
         tiskniProgmem(TEXT_E);
@@ -623,7 +622,7 @@ void loop() {
         mSerial.state = 255;  //ukonci dekodovani mSerial.bufferu
       }
       if (strncmp(mSerial.cmdPtr, "-t ", 3) == 0) {
-        if (!zpracujUniverzalniPrikaz(mSerial.cmdPtr, 1, 99, &aktualniNastaveni.spodni_hranice, &aktualniNastaveni.horni_hranice)) {
+        if (!zpracujUniverzalniPrikaz(mSerial.cmdPtr, 500, 20000, nullptr, nullptr, &aktualniNastaveni.spodni_hranice, &aktualniNastaveni.horni_hranice)) {
           tiskniProgmem(TEXT_T);
         };
         mSerial.state = 255;  //ukonci dekodovani mSerial.bufferu

@@ -28,7 +28,7 @@ const size_t VERSION_SIZE = sizeof(VERSION);
 // --- DEFINICE PINU
 //------------------------------------------------------------------------------
 const byte INPUT_PIN = 2;
-const byte OUTPUT_PIN = 12;
+const byte OUTPUT_PIN = 12;   // pozor v přerušení se přistupuje k pinu přímo ne přes diritalWrite
 const byte ERROR_PIN = 6;
 
 //------------------------------------------------------------------------------
@@ -37,7 +37,6 @@ const byte ERROR_PIN = 6;
 const char TEXT_SHOW[] PROGMEM = "SHOW displays the current values ​​of all parameters.";
 const char TEXT_T[] PROGMEM = "-t [number1] [number2] setting limits for pulse switching in us (500-20000) pin12.";
 const char TEXT_I[] PROGMEM = "-i [number] 0/1 - no/yes invert output.";
-//const char TEXT_N[] PROGMEM = "-n [number] to set the number of consecutive period before the state pin 12 flips.";
 const char TEXT_P[] PROGMEM = "-p [number1] [number2] to set limits for correct period in us (100-65000).";
 const char TEXT_S[] PROGMEM = "-s [number1] [number2] to set limits for correct duty cycle in permille (1-499).";
 const char TEXT_E[] PROGMEM = "-e [number] to set the number of consecutive errors before the error pin (0-255) pin6 flips.";
@@ -108,7 +107,6 @@ struct MojeNastaveni {
   byte listing;              // 0/1/2 - no/yes lists current values of frequency and duty cycle
   char decimalSeparator;
   char columnsSeparator;     //
-  //byte periodCount;          // how many periods must there be in order for the output to flip
 };
 
 //------------------------------------------------------------------------------
@@ -137,7 +135,7 @@ volatile byte tail = 0;                       // ocas bufferu PwmMeasurement
 volatile unsigned long lastEdgeTime = 0;
 volatile unsigned long highDuration = 0;
 volatile unsigned long lowDuration = 0;
-//volatile bool pinState = false;  // Current state of the pin
+
 
 void pushMeasurement(unsigned long period, int dutyCycle, unsigned long impuls) {
   byte nextHead = (head + 1) % BUFFER_SIZE;
@@ -172,7 +170,7 @@ void handlePinChange() {
 
   if (!isInputLow) { 
     // --- Právě skončil LOW segment (optočlen přestal vést) ---
-    // TADY JE TVÁ PRIORITA: PŘEPNUTÍ PINU 12
+    // PRIORITA: PŘEPNUTÍ PINU 12
     
     if (duration > aktualniNastaveni.horni_hranice) {
       // Případ > 12ms: PIN 12 = !input
@@ -214,7 +212,6 @@ void zobrazNastaveni() {
   Serial.print(F("Threshold LOW -t: "));  Serial.print(aktualniNastaveni.spodni_hranice);  Serial.println(F(" us"));
   Serial.print(F("Threshold HIGH -t: "));  Serial.print(aktualniNastaveni.horni_hranice);  Serial.println(F(" us"));
   Serial.print(F("Invert output -i: "));  Serial.println(aktualniNastaveni.input);
-  //Serial.print(F("Number of periods -n: "));  Serial.println(aktualniNastaveni.periodCount);  
   Serial.print(F("Min period -p: "));  Serial.print(aktualniNastaveni.min_perioda);  Serial.println(F(" us"));
   Serial.print(F("Max period -p: "));  Serial.print(aktualniNastaveni.max_perioda);  Serial.println(F(" us"));
   Serial.print(F("Min duty cycle -s: "));  Serial.print(aktualniNastaveni.min_strida);  Serial.println(F(" permille"));
@@ -473,7 +470,6 @@ void loop() {
         tiskniProgmem(TEXT_SHOW);
         tiskniProgmem(TEXT_T);
         tiskniProgmem(TEXT_I);
-        //tiskniProgmem(TEXT_N);
         tiskniProgmem(TEXT_P);
         tiskniProgmem(TEXT_S);
         tiskniProgmem(TEXT_E);
@@ -633,12 +629,6 @@ void loop() {
         };
         mSerial.state = 255;  //ukonci dekodovani mSerial.bufferu
       }
-      // if (strncmp(mSerial.cmdPtr, "-n", 2) == 0) {
-      //   if (!zpracujUniverzalniPrikaz(mSerial.cmdPtr, 0, 255, &aktualniNastaveni.periodCount, nullptr, nullptr, nullptr)) {
-      //     tiskniProgmem(TEXT_N);
-      //   };
-      //   mSerial.state = 255;  //ukonci dekodovani mSerial.bufferu
-      // }
       if (strncmp(mSerial.cmdPtr, "-l", 2) == 0) {
         if (!zpracujUniverzalniPrikaz(mSerial.cmdPtr, 0, 2, &aktualniNastaveni.listing, nullptr, nullptr, nullptr)) {
           tiskniProgmem(TEXT_L);

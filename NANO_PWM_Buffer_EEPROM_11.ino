@@ -85,7 +85,7 @@ struct ControlState {
   bool evaluateMeasurement = false;           // true - ma se vyhodnocovat novy odmer nebo vypadek signalu
   unsigned long lastMeasurementTime;          // cas kdy bylo naposledy uspesne precteno mereni z bufferu
   unsigned long startErrorTime = 0;           // cas kdy zacla chyba
-  const unsigned int signalTimeout_ms = 200;  // casVypadku: doba v ms po ktere se vyhodnoti neexistence signalu
+  const unsigned int signalTimeout_ms = 60;   // casVypadku: doba v ms po ktere se vyhodnoti neexistence signalu
   byte dutyCycleErrorCount = 0;               // pocitadlo kolikrat za sebou byla detekovana chyba stridy
   byte periodErrorCount = 0;                  // pocitadlo kolikrat za sebou byla detekovana chyba periody
   const byte ERROR_OFF = 255;                 // pokud je nastaveno pocet povolenych erroru na 255 tak se error nikdy nehlasi
@@ -137,7 +137,7 @@ volatile byte tail = 0;                       // ocas bufferu PwmMeasurement
 volatile unsigned long lastEdgeTime = 0;
 volatile unsigned long highDuration = 0;
 volatile unsigned long lowDuration = 0;
-volatile bool pinState = false;  // Current state of the pin
+//volatile bool pinState = false;  // Current state of the pin
 
 void pushMeasurement(unsigned long period, int dutyCycle, unsigned long impuls) {
   byte nextHead = (head + 1) % BUFFER_SIZE;
@@ -162,30 +162,44 @@ bool popMeasurement(unsigned long &period, unsigned int &dutyCycle, unsigned lon
 // Interrupt Service Routine (ISR) function
 //--------------------------------------------------------------
 void handlePinChange() {
+  // 1. Okamžitý odečet času a aktualizace značky (nekompromisně)
   unsigned long currentTime = micros();
   unsigned long duration = currentTime - lastEdgeTime;
-  lastEdgeTime = currentTime;  // Update the edge time immediately
-  bool log1 = 0;               // definice jaka je hodnota na stupu kdyz optoclenem proteka proud
+  lastEdgeTime = currentTime;
 
-  if (digitalRead(INPUT_PIN) == log1) {
-    // Transition from LOW to HIGH arrived. The previous segment was LOW.
+  // 2. Bleskové čtení stavu (D2)
+  bool isInputLow = !(PIND & (1 << PD2));
+
+  if (!isInputLow) { 
+    // --- Právě skončil LOW segment (optočlen přestal vést) ---
+    // TADY JE TVÁ PRIORITA: PŘEPNUTÍ PINU 12
+    
+    if (duration > 12000) {
+      // Případ > 12ms: PIN 12 = !input
+      if (aktualniNastaveni.input) PORTB &= ~(1 << PB4); 
+      else PORTB |= (1 << PB4);
+    } 
+    else if (duration < 8000) {
+      // Případ 1ms až 8ms: PIN 12 = input
+      if (aktualniNastaveni.input) PORTB |= (1 << PB4); 
+      else PORTB &= ~(1 << PB4);
+    }
+
+    // 3. Uložení dat a výpočty (teď už je pin 12 přepnutý, máme čas)
     lowDuration = duration;
-    pinState = true;
 
-    // If we have both components, we can calculate the period and duty cycle
     if (highDuration > 0 && lowDuration > 0) {
       unsigned long currentPeriod = highDuration + lowDuration;
-      if (currentPeriod > 0) {
-        int dutyCycle = (highDuration * 1000UL) / currentPeriod;
-        pushMeasurement(currentPeriod, dutyCycle, highDuration);
-      }
+      int dutyCycle = (highDuration * 1000UL) / currentPeriod;
+      pushMeasurement(currentPeriod, dutyCycle, highDuration);
     }
+
   } else {
-    // Transition from HIGH to LOW arrived. The previous segment was HIGH.
+    // --- Právě skončil HIGH segment (optočlen začal vést) ---
     highDuration = duration;
-    pinState = false;
   }
 }
+
 
 //------------------------------------------------------------------------------
 // Pomocna funkce pro tisk retezců z PROGMEM
@@ -200,7 +214,7 @@ void zobrazNastaveni() {
   Serial.print(F("Threshold LOW -t: "));  Serial.print(aktualniNastaveni.spodni_hranice);  Serial.println(F("%"));
   Serial.print(F("Threshold HIGH -t: "));  Serial.print(aktualniNastaveni.horni_hranice);  Serial.println(F("%"));
   Serial.print(F("Invert output -i: "));  Serial.println(aktualniNastaveni.input);
-  Serial.print(F("Number of periods -n: "));  Serial.println(aktualniNastaveni.periodCount);  
+  //Serial.print(F("Number of periods -n: "));  Serial.println(aktualniNastaveni.periodCount);  
   Serial.print(F("Min period -p: "));  Serial.print(aktualniNastaveni.min_perioda);  Serial.println(F(" us"));
   Serial.print(F("Max period -p: "));  Serial.print(aktualniNastaveni.max_perioda);  Serial.println(F(" us"));
   Serial.print(F("Min duty cycle -s: "));  Serial.print(aktualniNastaveni.min_strida);  Serial.println(F(" permille"));
@@ -230,7 +244,7 @@ void tovarniNastaveni() {
   aktualniNastaveni.listing = 0;
   aktualniNastaveni.decimalSeparator = ',';
   aktualniNastaveni.columnsSeparator = ';';
-  aktualniNastaveni.periodCount = 1;
+  //aktualniNastaveni.periodCount = 1;
 
   EEPROM.put(EEPROM_ADRESA, aktualniNastaveni);
 }  //void tovarniNastaveni
@@ -353,25 +367,8 @@ void loop() {
   }
 
   if (control.evaluateMeasurement) {
-    // test whether to flip the output
+      
     control.evaluateMeasurement = false;
-    if (mereni.dutyCyclePromile > 10 * aktualniNastaveni.horni_hranice) {
-      // digitalWrite(OUTPUT_PIN, !aktualniNastaveni.input);
-      if (control.countHigh >= aktualniNastaveni.periodCount) {
-        digitalWrite(OUTPUT_PIN, !aktualniNastaveni.input);
-        control.countLow = 0;
-      } else {
-        control.countHigh++;
-      }
-    } else if (mereni.dutyCyclePromile < 10 * aktualniNastaveni.spodni_hranice) {
-      // digitalWrite(OUTPUT_PIN, aktualniNastaveni.input);
-      if (control.countLow >= aktualniNastaveni.periodCount) {
-        digitalWrite(OUTPUT_PIN, aktualniNastaveni.input);
-        control.countHigh = 0;
-      } else {
-        control.countLow++;
-      }
-    }
 
     // here is added evaluation whether everything is within the correct limits
     mereni.normalizedDutyCycle = mereni.dutyCyclePromile;
@@ -442,6 +439,8 @@ void loop() {
     mereni.pulseLength_us = 0;
     control.evaluateMeasurement = true;
     control.lastMeasurementTime = millis();
+    digitalWrite(OUTPUT_PIN, aktualniNastaveni.input);
+    
   }  // if (millis()-control.lastMeasurementTime>control.signalTimeout_ms)
 
   // === PART 2: Serial Communication Detection and Command Processing (C-string) ===
@@ -635,12 +634,12 @@ void loop() {
         };
         mSerial.state = 255;  //ukonci dekodovani mSerial.bufferu
       }
-      if (strncmp(mSerial.cmdPtr, "-n", 2) == 0) {
-        if (!zpracujUniverzalniPrikaz(mSerial.cmdPtr, 0, 255, &aktualniNastaveni.periodCount, nullptr, nullptr, nullptr)) {
-          tiskniProgmem(TEXT_N);
-        };
-        mSerial.state = 255;  //ukonci dekodovani mSerial.bufferu
-      }
+      // if (strncmp(mSerial.cmdPtr, "-n", 2) == 0) {
+      //   if (!zpracujUniverzalniPrikaz(mSerial.cmdPtr, 0, 255, &aktualniNastaveni.periodCount, nullptr, nullptr, nullptr)) {
+      //     tiskniProgmem(TEXT_N);
+      //   };
+      //   mSerial.state = 255;  //ukonci dekodovani mSerial.bufferu
+      // }
       if (strncmp(mSerial.cmdPtr, "-l", 2) == 0) {
         if (!zpracujUniverzalniPrikaz(mSerial.cmdPtr, 0, 2, &aktualniNastaveni.listing, nullptr, nullptr, nullptr)) {
           tiskniProgmem(TEXT_L);

@@ -42,7 +42,7 @@ const char TEXT_S[] PROGMEM = "-s [number1] [number2] to set limits for correct 
 const char TEXT_E[] PROGMEM = "-e [number] to set the number of consecutive errors before the error pin (0-255) pin6 flips.";
 const char TEXT_TE[] PROGMEM = "-te [number] minimum error signaling duration (10-65000) ms.";
 const char TEXT_BPS[] PROGMEM = "-b [number] serial buat rate 96 -> 9600, 144 -> 14400, 192 -> 19200, 288 -> 28800, 384 -> 38400, 576 -> 57600, 1152 -> 115200.";
-const char TEXT_L[] PROGMEM = "-l [number] 0/1 - no/yes lists current values of frequency and duty cycle.";
+const char TEXT_L[] PROGMEM = "-l [number] lists current values (0-No; 1-Yes error; 2- Yes periodic).";
 const char TEXT_DS[] PROGMEM = "-ds [char] decimal separator.";
 const char TEXT_CS[] PROGMEM = "-cs [char] columns separator.";
 const char TEXT_H[] PROGMEM = "-h for help.\r\n";
@@ -235,7 +235,7 @@ void tovarniNastaveni() {
   aktualniNastaveni.max_perioda = 22000;
   aktualniNastaveni.min_strida = 280;
   aktualniNastaveni.max_strida = 330;
-  aktualniNastaveni.max_error = 1;
+  aktualniNastaveni.max_error = 2;
   aktualniNastaveni.t_error = 800;
   aktualniNastaveni.bps = 96;
   aktualniNastaveni.listing = 0;

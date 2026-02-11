@@ -1,0 +1,74 @@
+Version 4
+SymbolType BLOCK
+LINE Normal -47 -16 -80 -16
+LINE Normal -64 16 -47 -16
+LINE Normal -80 -16 -64 16
+LINE Normal -48 16 -80 16
+LINE Normal -64 48 -64 -48
+LINE Normal -14 -7 -46 -7
+LINE Normal -23 -11 -14 -7
+LINE Normal -23 -3 -14 -7
+LINE Normal -14 9 -46 9
+LINE Normal -23 5 -14 9
+LINE Normal -23 13 -14 9
+LINE Normal -64 -48 -96 -48
+LINE Normal -64 48 -96 48
+LINE Normal 21 -24 13 -24
+LINE Normal 21 -16 21 -24
+LINE Normal 13 -16 21 -16
+LINE Normal 13 -29 13 -33
+LINE Normal 13 -22 13 -26
+LINE Normal 13 -14 13 -18
+LINE Normal 8 -14 8 -33
+LINE Normal 17 -25 13 -24
+LINE Normal 17 -23 13 -24
+LINE Normal 21 -31 13 -31
+LINE Normal 21 -40 21 -31
+LINE Normal 21 24 13 24
+LINE Normal 21 16 21 24
+LINE Normal 13 16 21 16
+LINE Normal 13 29 13 33
+LINE Normal 13 22 13 26
+LINE Normal 13 14 13 18
+LINE Normal 8 14 8 33
+LINE Normal 17 25 13 24
+LINE Normal 17 23 13 24
+LINE Normal 21 31 13 31
+LINE Normal 21 40 21 31
+LINE Normal 21 16 21 -16
+LINE Normal 0 -24 8 -24
+LINE Normal 0 24 0 -24
+LINE Normal 8 24 0 24
+LINE Normal 21 -48 21 -40
+LINE Normal 64 -48 21 -48
+LINE Normal 21 48 21 40
+LINE Normal 64 48 21 48
+LINE Normal -96 -48 -112 -48
+LINE Normal -96 48 -112 48
+LINE Normal 32 -40 21 -40
+LINE Normal 32 -7 32 -40
+LINE Normal 21 -7 32 -7
+LINE Normal 34 -26 30 -26
+LINE Normal 30 -22 32 -26
+LINE Normal 34 -22 30 -22
+LINE Normal 32 -26 34 -22
+LINE Normal 32 7 32 40
+LINE Normal 30 26 34 26
+LINE Normal 34 22 32 26
+LINE Normal 30 22 34 22
+LINE Normal 32 26 30 22
+LINE Normal 21 7 32 7
+LINE Normal 21 40 32 40
+RECTANGLE Normal 48 64 -96 -64
+PIN -112 -48 BOTTOM 8
+PINATTR PinName 1
+PINATTR SpiceOrder 1
+PIN -112 48 TOP 8
+PINATTR PinName 2
+PINATTR SpiceOrder 2
+PIN 64 -48 BOTTOM 8
+PINATTR PinName 4
+PINATTR SpiceOrder 4
+PIN 64 48 TOP 8
+PINATTR PinName 3
+PINATTR SpiceOrder 3
